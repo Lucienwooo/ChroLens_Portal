@@ -27,7 +27,7 @@ Designing: Photoshop + Illustrator + Assets Folder
 Gaming: GTA V.. I?? / Fortnite + Discord + Strategy Guide Website
 
 ---
-📄 Licensing Information
+### 📄 Licensing Information
 
 The code for this project is released under the **GNU General Public License v3.0 (GPLv3)**. This means you are free to use, study, modify, and distribute this code, but you must comply with all the terms of this license.
 
@@ -36,7 +36,7 @@ The code for this project is released under the **GNU General Public License v3.
 For more details, please refer to the [LICENSE file](LICENSE) in the root directory of this project.
 
 ---
-📄  Disclaimer
+### 📄  Disclaimer
 This code is provided for general reference and use only. The author assumes no responsibility for any damages incurred from the use or inability to use this code. Users assume all risks associated with the use of this code.
 
 ---
