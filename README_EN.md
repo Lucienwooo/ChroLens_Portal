@@ -5,7 +5,7 @@
 [繁體中文](README.md) | [日本語](README_JA.md)
 
 ---
-
+![ChroLens_Portal](pic01.png)
 ### ChroLens_Portal: Your Personal "Lazy Bundle" Launcher!
 
 This app is like your **personal computer assistant**, perfect for those times you need to open a ton of stuff at once.
@@ -30,7 +30,7 @@ You can name these modes however you like (e.g., changing "A" to "Morning Routin
 
 ## 🎬 Video
 
-<div style="padding:52.73% 0 0 0;position:relative;"><iframe src="https://player.vimeo.com/video/1087659485?h=83487a7ea9&amp;title=0&amp;byline=0&amp;portrait=0&amp;badge=0&amp;autopause=0&amp;player_id=0&amp;app_id=58479" frameborder="0" allow="autoplay; fullscreen; picture-in-picture; clipboard-write; encrypted-media" style="position:absolute;top:0;left:0;width:100%;height:100%;" title="ChroLens_Portal_基本操作"></iframe></div><script src="https://player.vimeo.com/api/player.js"></script>
+[![ChroLens_Portal_基本操作]](https://vimeo.com/1087659485/83487a7ea9)
 
 ### Future Plans
 

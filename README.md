@@ -5,7 +5,7 @@
 [English](README_EN.md) | [日本語](README_JA.md)
 
 ---
-
+![ChroLens_Portal](pic01.png)
 ### ChroLens_Portal 核心功能：讓您的電腦也變「懶人包」啟動器！
 
 這程式就像是您的**電腦啟動小幫手**，特別適合現在大家常常需要同時開一堆東西的狀況。
@@ -28,7 +28,8 @@
 
 ## 🎬 影片
 
-<div style="padding:52.73% 0 0 0;position:relative;"><iframe src="https://player.vimeo.com/video/1087659485?h=83487a7ea9&amp;title=0&amp;byline=0&amp;portrait=0&amp;badge=0&amp;autopause=0&amp;player_id=0&amp;app_id=58479" frameborder="0" allow="autoplay; fullscreen; picture-in-picture; clipboard-write; encrypted-media" style="position:absolute;top:0;left:0;width:100%;height:100%;" title="ChroLens_Portal_基本操作"></iframe></div><script src="https://player.vimeo.com/api/player.js"></script>
+[![ChroLens_Portal_基本操作]](https://vimeo.com/1087659485/83487a7ea9)
+
 
 ### 未來計劃
 
