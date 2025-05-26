@@ -7,7 +7,7 @@
 
 ---
 ![ChroLens_Portal_Basic_Operations](pic01.png)
-[![ChroLens_Portal_Basic_Operations](pic01.png)](https://vimeo.com/1087659485/83487a7ea9)
+[[ChroLens_Portal_基本操作]](https://player.vimeo.com/video/1087659485?h=83487a7ea9)
 ### ChroLens_Portal Core Feature: Turn Your PC into a "Lazy Pack" Launcher!
 
 This program acts as your **PC startup assistant**, especially perfect for situations where you often need to open many things simultaneously.

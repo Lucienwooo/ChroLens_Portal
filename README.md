@@ -7,7 +7,7 @@
 
 ---
 ![ChroLens_Portal_Basic_Operations](pic01.png)
-[![ChroLens_Portal_基本操作](pic01.png)](https://vimeo.com/1087659485/83487a7ea9)
+[[ChroLens_Portal_基本操作]](https://player.vimeo.com/video/1087659485?h=83487a7ea9)
 ### ChroLens_Portal 核心功能：讓你的電腦也變「懶人包」啟動器！
 
 這程式像**電腦啟動幫手**，適合現在常常需要同時開一堆東西的狀況。
