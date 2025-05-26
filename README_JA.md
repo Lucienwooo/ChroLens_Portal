@@ -7,7 +7,7 @@
 
 ---
 ![ChroLens_Portal_Basic_Operations](pic01.png)
-[![ChroLens_Portal_基本操作](pic01.png)](https://vimeo.com/1087659485/83487a7ea9)
+[![ChroLens_Portal_基本操作]](https://player.vimeo.com/video/1087659485?h=83487a7ea9&amp;badge=0&amp;autopause=0&amp;player_id=0&amp;app_id=58479" frameborder="0" allow="autoplay)
 ### ChroLens_Portal コア機能：あなたのPCを「おまかせ起動」ランチャーに変える！
 
 このプログラムは、あなたの**PC起動アシスタント**として機能し、特に多くのものを同時に開くことが多い現代の状況に最適です。
