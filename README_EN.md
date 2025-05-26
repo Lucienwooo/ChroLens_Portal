@@ -1,49 +1,53 @@
-# ChroLens_Portal 1.0.0
+# ChroLens_Portal
 
 ---
 
 [繁體中文](README.md) | [日本語](README_JA.md)
 
 ---
-![ChroLens_Portal](pic01.png)
-### ChroLens_Portal: Your Personal "Lazy Bundle" Launcher!
+[![ChroLens_Portal_Basic_Operations](pic01.png)](https://vimeo.com/1087659485/83487a7ea9)
+### ChroLens_Portal Core Feature: Turn Your PC into a "Lazy Pack" Launcher!
 
-This app is like your **personal computer assistant**, perfect for those times you need to open a ton of stuff at once.
+This program acts as your **PC startup assistant**, especially perfect for situations where you often need to open many things simultaneously.
 
 It helps you:
 
-* **One-Click Launch:** Group all your go-to apps, documents, or shortcuts. One click, and boom – they all open up in order, no more hunting and pecking!
-* **Clean Up & Close:** Task done? No problem. You can instantly shut down all the related windows from a group, leaving your desktop spick and span. Super satisfying!
-* **Smart Memory:** It remembers everything! Your custom group names, file lists, and even the launch order are saved automatically, so it's all ready for you next time.
+* **"One-Click Launch":** Group frequently used programs, files, or shortcuts, and open them all in sequence with just one click.
+* **"Close When Done":** After finishing a set of tasks, you can easily close all related windows at once, keeping your desktop clean and tidy.
+* **"Auto-Memory":** Whether it's your group names, file lists, or opening order, the program remembers everything for your next use.
 
-### "Group Launch": Custom Modes for Your Workflow & Fun
+### "Group Launch": Customized "Scenario Modes" Tailored for Your Efficiency
 
-The coolest part of ChroLens_Portal is how it lets you **bundle all sorts of files and applications into unique "scenario modes"** based on your needs. Whether it's documents, images, videos, music, or even shortcuts (.LNK files), it handles them seamlessly. Think of it as a smart hotkey system tailored for your digital life:
+The most thoughtful design of this program is its ability to let you **"bundle" various files and applications on your computer into distinct "scenario modes" based on different needs**. Whether it's documents, images, videos, music, or even various shortcuts (`.LNK` files), everything can be well-managed. Imagine this as an intelligent shortcut tailored for your digital life:
 
-* **"Work Mode":** You can set up a "Work Mode" that instantly opens your **PowerPoint slides (PDFs)**, that **important Excel spreadsheet**, your **main Word document**, and even the **shortcut to your company's VPN**. Just one click, and you're locked and loaded, ready to be productive and crush your tasks.
-* **"Entertainment Mode":** Time to unwind? This mode bundles your **favorite movie (MP4 file)**, your **music player app**, a **shortcut to your go-to YouTube channels**, or even a **direct link to your streaming service's website**. One tap, and all your entertainment is up and running, so you can kick back and relax.
-* **"Study Mode":** Boost your learning game! Set up a "Study Mode" to automatically open your **e-book (PDF)**, your **note-taking software**, a **shortcut to your research papers folder**, or **links to your online course platforms**. It gets you straight into study zone without wasting time opening everything manually.
-
-You can name these modes however you like (e.g., changing "A" to "Morning Routine") and freely decide which files each mode includes, even adjusting the opening interval. This way, whether you're tackling work, enjoying leisure, or diving into studies, you'll start your digital journey in the most fluid and efficient way.
+* **"Work Mode":** You can set up **presentation PDFs**, **project Excel sheets**, **frequently used Word documents**, or even **company VPN shortcuts** all within the same mode. With a single click, all your work essentials will open in sequence, allowing you to quickly get into the flow, focused and efficient.
+* **"Entertainment Mode":** When you want to relax, integrate **movie MP4 files**, **music player programs**, **shortcuts to favorite YouTube channels**, or **web shortcuts to online streaming platforms** into this mode. With a single click, all your audio-visual entertainment will launch in sequence, allowing you to instantly enjoy your exclusive leisure time.
+* **"Study Mode":** Create a dedicated mode for your study plan, automatically opening **e-book PDFs**, **note-taking software**, **shortcuts to research paper folders**, or **web shortcuts to frequently used online courses**. This helps you quickly dive into knowledge exploration, saving time from opening each item individually.
 
 ---
 
-## 🎬 Video
+## 📄 Licensing Information
 
-[![ChroLens_Portal_基本操作]](https://vimeo.com/1087659485/83487a7ea9)
+The code for this project is released under the **GNU General Public License v3.0 (GPLv3)**. This means you are free to use, study, modify, and distribute this code, but you must comply with all the terms of this license.
+
+**If you wish to use this code for closed-source projects, commercial sale, or require dedicated commercial support services, please contact us to purchase a commercial license.**
+
+For more details, please refer to the [LICENSE file](LICENSE) in the root directory of this project.
+
+---
 
 ### Future Plans
 
-* May add scheduled automatic program launch and group activation/deactivation.
+* May include scheduled automatic program launch and group activation/deactivation.
 
 ---
 
-### 💸 Support the Creator / 作者を応援する
+### 💸 Support the Creator
 
-🧠 **These scripts saved you time—share a bit and donate. Give me money!**  
-⌛ **These scripts saved you time—share a bit and donate. Give me money!**  
+🧠 **These scripts saved you time—share a bit and donate. Give me money!**
+⌛ **這些程式幫你省下的時間，分一點來抖內吧！給我錢！**
 🪙 **このツールで浮いた時間、ちょっとだけ投げ銭して？お金ちょうだい！**
 
 👉[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/B0B51FBVA8)
 
-👉Also, if you have any questions, ideas, or suggestions, please join my [Discord—ChroLens_](https://discord.gg/72Kbs4WPPn)
+👉Of course, if you have any questions, thoughts, or suggestions, please join my [Discord－ChroLens_](https://discord.gg/72Kbs4WPPn)

@@ -5,7 +5,7 @@
 [English](README_EN.md) | [日本語](README_JA.md)
 
 ---
-![ChroLens_Portal](pic01.png)
+[![ChroLens_Portal_基本操作](pic01.png)](https://vimeo.com/1087659485/83487a7ea9)
 ### ChroLens_Portal 核心功能：讓您的電腦也變「懶人包」啟動器！
 
 這程式就像是您的**電腦啟動小幫手**，特別適合現在大家常常需要同時開一堆東西的狀況。
@@ -26,10 +26,15 @@
 
 ---
 
-## 🎬 影片
+## 📄 授權資訊 (Licensing)
 
-[![ChroLens_Portal_基本操作]](https://vimeo.com/1087659485/83487a7ea9)
+本專案的程式碼依循 **GNU General Public License v3.0 (GPLv3)** 發布。這表示您可以自由地使用、學習、修改及分發本程式碼，但請務必遵守該許可證的所有條款。
 
+**如果您希望將本程式碼用於閉源專案、商業販售，或需要專門的商業支援服務，請聯繫我們以購買商業授權。**
+
+詳情請參閱專案根目錄下的 [LICENSE 檔案](LICENSE)。
+
+---
 
 ### 未來計劃
 
@@ -46,3 +51,4 @@
 👉[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/B0B51FBVA8)
 
 👉當然，如果你有任何問題、想法或建議，請加入我的 [Discord－ChroLens_](https://discord.gg/72Kbs4WPPn)
+
