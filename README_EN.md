@@ -1,10 +1,12 @@
 # ChroLens_Portal
-
+## Future Plans
+* Potentially add scheduled automatic program opening and group activation/deactivation.
 ---
 
 [繁體中文](README.md) | [日本語](README_JA.md)
 
 ---
+![ChroLens_Portal_Basic_Operations](pic01.png)
 [![ChroLens_Portal_Basic_Operations](pic01.png)](https://vimeo.com/1087659485/83487a7ea9)
 ### ChroLens_Portal Core Feature: Turn Your PC into a "Lazy Pack" Launcher!
 
@@ -20,9 +22,9 @@ It helps you:
 
 The most thoughtful design of this program is its ability to let you **"bundle" various files and applications on your computer into distinct "scenario modes" based on different needs**. Whether it's documents, images, videos, music, or even various shortcuts (`.LNK` files), everything can be well-managed. Imagine this as an intelligent shortcut tailored for your digital life:
 
-* **"Work Mode":** You can set up **presentation PDFs**, **project Excel sheets**, **frequently used Word documents**, or even **company VPN shortcuts** all within the same mode. With a single click, all your work essentials will open in sequence, allowing you to quickly get into the flow, focused and efficient.
-* **"Entertainment Mode":** When you want to relax, integrate **movie MP4 files**, **music player programs**, **shortcuts to favorite YouTube channels**, or **web shortcuts to online streaming platforms** into this mode. With a single click, all your audio-visual entertainment will launch in sequence, allowing you to instantly enjoy your exclusive leisure time.
-* **"Study Mode":** Create a dedicated mode for your study plan, automatically opening **e-book PDFs**, **note-taking software**, **shortcuts to research paper folders**, or **web shortcuts to frequently used online courses**. This helps you quickly dive into knowledge exploration, saving time from opening each item individually.
+Project: Word + Reference PDFs + Web Browser
+Designing: Photoshop + Illustrator + Assets Folder
+Gaming: GTA V.. I?? / Fortnite + Discord + Strategy Guide Website
 
 ---
 
@@ -35,10 +37,8 @@ The code for this project is released under the **GNU General Public License v3.
 For more details, please refer to the [LICENSE file](LICENSE) in the root directory of this project.
 
 ---
-
-### Future Plans
-
-* May include scheduled automatic program launch and group activation/deactivation.
+## 📄  Disclaimer
+This code is provided for general reference and use only. The author assumes no responsibility for any damages incurred from the use or inability to use this code. Users assume all risks associated with the use of this code.
 
 ---
 
