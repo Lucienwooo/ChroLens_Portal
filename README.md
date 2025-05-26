@@ -1,27 +1,47 @@
----
-
-## 📷 範例畫面
-
-![範例畫面](範例01.png)
+# ChroLens_Portal
 
 ---
 
-## 🎬 影片介紹
-
-[![Demo Video](https://img.youtube.com/vi/預留影片ID/mqdefault.jpg)](https://www.youtube.com/watch?v=預留影片ID)
-<!-- 請將上方 "預留影片ID" 替換為你的 YouTube 影片ID或其他影片網址 -->
-
-
-
+[English](README_EN.md) | [日本語](README_JA.md)
 
 ---
-## 💸 支持作者 / Support the Creator / 作者を応援する
 
-🧠 **這些程式幫你省下的時間，分一點來抖內吧！給我錢！**  
-⌛ **These scripts saved you time—share a bit and donate. Give me money!**  
+### ChroLens_Portal 核心功能：讓您的電腦也變「懶人包」啟動器！
+
+這程式就像是您的**電腦啟動小幫手**，特別適合現在大家常常需要同時開一堆東西的狀況。
+
+它可以幫您：
+
+* **「一鍵啟動」：** 把常用的程式、文件或捷徑分組，按一下就能全部依序打開，不用一個一個點。
+* **「用完即關」：** 搞定了一組任務，也能輕鬆把相關視窗一次關掉，讓桌面乾淨溜溜。
+* **「自動記憶」：** 不管是您的分組名稱、檔案清單還是開啟順序，下次打開程式都幫您記好好。
+
+### 「分組啟動」：為您的效率量身打造的專屬「情境模式」
+
+這個程式最貼心的設計，就是能讓您將電腦裡各式各樣的檔案和應用程式，**依據不同需求「打包」成各具特色的「情境模式」**。不論是文件、圖片、影片、音樂，甚至是各種捷徑（`.LNK` 檔），都能妥善管理。想像一下，這就像是為您的數位生活量身打造的智能快捷鍵：
+
+* **「工作模式」：** 您可以將**簡報的 PDF 檔**、**企劃的 Excel 表格**、**常用的 Word 文件**，甚至是**公司 VPN 的捷徑**等，通通設定在同一個模式裡。輕輕一點，所有工作所需都會依序開啟，讓您迅速進入狀況，專注又有效率。
+* **「娛樂模式」：** 當您想放鬆時，將**電影的 MP4 檔**、**音樂播放器程式**、**常用的 YouTube 頻道捷徑**，或是**線上串流平台的網頁捷徑**等，整合到這個模式。輕輕一點，所有影音娛樂便會依序啟動，讓您即刻享受專屬的悠閒時光。
+* **「學習模式」：** 為您的學習規劃打造專屬模式，自動開啟**電子書的 PDF 檔**、**筆記軟體**、**論文資料夾的捷徑**，或是**常用的線上課程網頁捷徑**。這能協助您快速投入知識的探索，省去逐一開啟的時間。
+
+---
+
+## 🎬 影片
+
+<div style="padding:52.73% 0 0 0;position:relative;"><iframe src="https://player.vimeo.com/video/1087659485?h=83487a7ea9&amp;title=0&amp;byline=0&amp;portrait=0&amp;badge=0&amp;autopause=0&amp;player_id=0&amp;app_id=58479" frameborder="0" allow="autoplay; fullscreen; picture-in-picture; clipboard-write; encrypted-media" style="position:absolute;top:0;left:0;width:100%;height:100%;" title="ChroLens_Portal_基本操作"></iframe></div><script src="https://player.vimeo.com/api/player.js"></script>
+
+### 未來計劃
+
+* 可能加入定時自動開啟程式並啟動/關閉分組。
+
+---
+
+### 💸 支持作者 / Support the Creator / 作者を応援する
+
+🧠 **這些程式幫你省下的時間，分一點來抖內吧！給我錢！**  
+⌛ **These scripts saved you time—share a bit and donate. Give me money!**  
 🪙 **このツールで浮いた時間、ちょっとだけ投げ銭して？お金ちょうだい！**
 
 👉[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/B0B51FBVA8)
 
-👉當然，如果你有任何意見或想法建議，請加入我的 [Discord](https://discord.gg/72Kbs4WPPn) 一起來討論吧！
-
+👉當然，如果你有任何問題、想法或建議，請加入我的 [Discord－ChroLens_](https://discord.gg/72Kbs4WPPn)
