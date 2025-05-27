@@ -1,6 +1,7 @@
 ### ChroLens_Portal 1.0.0 
 ### 2025/05/26 By Lucienwooo
 # pyinstaller --onefile --noconsole --add-data "冥想貓貓.ico;." --icon=冥想貓貓.ico --hidden-import=win32timezone ChroLens_Portal.py 
+# 考慮新增分組視窗透過快捷鍵最上層顯示
 import os
 import time
 import win32gui
