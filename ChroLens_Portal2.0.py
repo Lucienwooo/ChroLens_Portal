@@ -1,7 +1,10 @@
-### ChroLens_Portal 1.0
+### ChroLens_Portal 2.0 
 ### 2025/05/26 By Lucienwooo
-# pyinstaller --onefile --noconsole --add-data "冥想貓貓.ico;." --icon=冥想貓貓.ico --hidden-import=win32timezone ChroLens_Portal.py 
-# 考慮新增分組視窗透過快捷鍵最上層顯示
+### pyinstaller --onefile --noconsole --add-data "冥想貓貓.ico;." --icon=冥想貓貓.ico --hidden-import=win32timezone ChroLens_Portal.py 
+###### 分組視窗透過快捷鍵最上層顯示，半成品。
+# 新增清單窗格，顯示當前所有開啟的視窗名稱
+# 並且讓選單可以記憶所以從清單選取的檔案/視窗名稱
+# 程式將不再只是能開啟或關閉程式
 import os
 import time
 import win32gui
@@ -15,6 +18,8 @@ from win32com.shell import shell, shellcon
 import subprocess
 import sys
 import json
+import win32con
+import keyboard  # 請確保已安裝
 
 LAST_PATH_FILE = "last_path.txt"
 SETTINGS_FILE = "chrolens_portal.json"
@@ -155,6 +160,11 @@ try:
     app.iconbitmap(ico_path)
 except Exception as e:
     print(f"無法設定 icon: {e}")
+
+# === 分組代碼與顯示名稱 ===
+group_codes = ["A", "B", "C", "D"]
+group_display_names = {c: tk.StringVar(value=c) for c in group_codes}
+
 # === 介面區塊 ===
 
 folder_var = tb.StringVar(value=load_last_path())
@@ -186,8 +196,75 @@ selectall_frame.grid(row=0, column=2, sticky="e")
 tb.Checkbutton(selectall_frame, variable=select_all_var, command=select_all_changed).grid(row=0, column=0, sticky="e")
 tb.Label(selectall_frame, text="全選").grid(row=0, column=1, sticky="w", padx=(2,0))
 
-group_codes = ["A", "B", "C", "D"]
-group_display_names = {code: tk.StringVar(value=code) for code in group_codes}
+# === 新版：快捷鍵設定（僅允許 ALT+任意鍵 或 CTRL+任意鍵）===
+default_hotkeys = ["Alt+1", "Alt+2", "Alt+3", "Alt+4"]
+group_hotkeys = [tk.StringVar(value=default_hotkeys[i]) for i in range(4)]
+
+def format_hotkey(event):
+    # 只允許 ALT+任意 或 CTRL+任意
+    keys = []
+    if event.state & 0x0004:  # Ctrl
+        keys.append("Ctrl")
+    if event.state & 0x0008:  # Alt
+        keys.append("Alt")
+    if not keys:
+        return ""  # 沒有 Ctrl/Alt 不允許
+    key = event.keysym
+    # 過濾掉純修飾鍵
+    if key in ("Shift_L", "Shift_R", "Control_L", "Control_R", "Alt_L", "Alt_R"):
+        return ""
+    if key.startswith("KP_"):
+        key = key.replace("KP_", "Num")
+    keys.append(key.capitalize())
+    return "+".join(keys)
+
+def on_hotkey_entry_key(event, idx):
+    if event.keysym in ("Escape", "BackSpace"):
+        group_hotkeys[idx].set(default_hotkeys[idx])
+        return "break"
+    hotkey = format_hotkey(event)
+    if hotkey:
+        group_hotkeys[idx].set(hotkey)
+    return "break"
+
+# 第二排：顯示[A][B][C][D] 快捷鍵（不可直接輸入，只能按下組合鍵）
+show_label_frames = []
+for idx, code in enumerate(group_codes):
+    frame = tb.Frame(frm)
+    frame.grid(row=1, column=idx, padx=8, pady=2, sticky="w")
+    show_label = tb.Label(frame, text=f"顯示 [{group_display_names[code].get()}]")
+    show_label.pack(side="left")
+    hotkey_entry = tb.Entry(frame, textvariable=group_hotkeys[idx], width=12, state="readonly", justify="center")
+    hotkey_entry.pack(side="left", padx=(4,0))
+    def make_on_key(idx):
+        return lambda event, i=idx: on_hotkey_entry_key(event, i)
+    hotkey_entry.bind("<Key>", make_on_key(idx))
+    hotkey_entry.bind("<Button-1>", lambda e, entry=hotkey_entry: entry.focus_set())
+    show_label_frames.append((show_label, hotkey_entry))
+
+def update_show_labels(*args):
+    for idx, code in enumerate(group_codes):
+        show_label_frames[idx][0].config(text=f"顯示 [{group_display_names[code].get()}]")
+
+for c in group_codes:
+    group_display_names[c].trace_add("write", update_show_labels)
+
+# === 新版：全域快捷鍵觸發（僅 ALT+任意 或 CTRL+任意）===
+def global_hotkey_handler(event):
+    pressed = format_hotkey(event)
+    for idx, code in enumerate(group_codes):
+        if pressed and pressed == group_hotkeys[idx].get():
+            set_group_windows_topmost(code)
+            break
+
+app.bind_all("<Key>", global_hotkey_handler, add="+")
+
+# 第三排：可自訂內容（這裡預留一排空白或可放其他元件）
+third_row_frame = tb.Frame(frm, height=32)
+third_row_frame.grid(row=2, column=0, columnspan=6, sticky="ew")
+# 你可以在這裡加入其他元件或說明文字
+# 例如：tb.Label(third_row_frame, text="這裡是第三排預留空間").pack()
+
 group_select_code = tk.StringVar(value=group_codes[0])
 
 def get_group_code_by_display_name(display_name):
@@ -489,5 +566,85 @@ for i in range(len(checkbox_vars_entries)):
     var.trace_add("write", auto_save)
 
 load_settings()
+
+def set_group_windows_topmost(group_code):
+    import ctypes
+    files = get_group_files(group_code)
+    if not files:
+        log(f"分組 {group_display_names[group_code].get()} 沒有檔案")
+        return
+    window_titles = [os.path.splitext(os.path.basename(f))[0].lower() for f in files]
+
+    found_any = False
+    def enum_handler(hwnd, titles):
+        if win32gui.IsWindowVisible(hwnd):
+            window_text = win32gui.GetWindowText(hwnd)
+            window_text_lower = window_text.lower()
+            for title in titles:
+                if not title:
+                    continue
+                if window_text_lower == title or title in window_text_lower:
+                    try:
+                        win32gui.ShowWindow(hwnd, 9)  # SW_RESTORE
+                        try:
+                            ctypes.windll.user32.AllowSetForegroundWindow(-1)
+                        except Exception:
+                            pass
+                        win32gui.SetForegroundWindow(hwnd)  # 讓視窗取得焦點
+                        win32gui.SetWindowPos(
+                            hwnd, win32con.HWND_TOP, 0, 0, 0, 0,
+                            win32con.SWP_NOMOVE | win32con.SWP_NOSIZE
+                        )  # 讓視窗浮現到最前
+                        nonlocal found_any
+                        found_any = True
+                    except Exception as e:
+                        log(f"bring to front 失敗: {window_text} ({e})")
+    win32gui.EnumWindows(enum_handler, window_titles)
+    if found_any:
+        log(f"已將分組 {group_display_names[group_code].get()} 的視窗浮現到最前方")
+    else:
+        # 除錯用：列出所有視窗標題
+        all_titles = []
+        def collect_titles(hwnd, _):
+            if win32gui.IsWindowVisible(hwnd):
+                t = win32gui.GetWindowText(hwnd)
+                if t.strip():
+                    all_titles.append(t)
+        win32gui.EnumWindows(collect_titles, None)
+        log(f"找不到符合的視窗。當前所有視窗標題：{all_titles}")
+
+def bind_hotkey(idx, code):
+    def on_key_press(event):
+        if format_hotkey(event) == group_hotkeys[idx].get():
+            set_group_windows_topmost(code)
+    app.bind_all("<Key>", on_key_press, add="+")
+
+for idx, code in enumerate(group_codes):
+    bind_hotkey(idx, code)
+
+def format_keyboard_hotkey(hotkey_str):
+    # 轉換顯示用的 "Alt+1" 為 keyboard 用的 "alt+1"
+    return hotkey_str.lower().replace("ctrl", "control")
+
+def register_global_hotkeys():
+    # 先清除舊的
+    try:
+        keyboard.remove_all_hotkeys()
+    except Exception:
+        pass
+    for idx, code in enumerate(group_codes):
+        hotkey = group_hotkeys[idx].get()
+        if hotkey:
+            keyboard.add_hotkey(
+                format_keyboard_hotkey(hotkey),
+                lambda c=code: set_group_windows_topmost(c)
+            )
+
+# 每次快捷鍵設定變動時都重新註冊
+for idx in range(4):
+    group_hotkeys[idx].trace_add("write", lambda *a, **k: register_global_hotkeys())
+
+# 程式啟動時註冊一次
+register_global_hotkeys()
 
 app.mainloop()
