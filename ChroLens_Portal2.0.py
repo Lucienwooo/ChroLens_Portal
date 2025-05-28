@@ -380,9 +380,9 @@ group_buttons = {}
 close_buttons = {}
 
 btns_outer_frame = tb.Frame(frm)
-btns_outer_frame.grid(row=8, column=0, columnspan=6, sticky="ew", padx=(0, 8), pady=(8, 4))
-btns_outer_frame.columnconfigure(0, weight=1)
-btns_outer_frame.columnconfigure(1, weight=1)
+btns_outer_frame.grid(row=8, column=0, columnspan=6, sticky="ew", padx=(0, 4), pady=(8, 4))
+btns_outer_frame.grid_columnconfigure(0, weight=1)
+btns_outer_frame.grid_columnconfigure(1, weight=1)
 
 open_btns_frame = tb.Frame(btns_outer_frame, borderwidth=1, relief="solid", padding=4)
 open_btns_frame.grid(row=0, column=0, sticky="ew")
@@ -418,16 +418,74 @@ for idx, code in enumerate(group_labels):
     close_btn.grid(row=row, column=col, padx=(8, 8), pady=(4, 4), sticky="ew")
     close_buttons[code] = close_btn
 
-log_text = tb.Text(frm, height=8, width=90, state="disabled")
-log_text.grid(row=10, column=0, columnspan=6, pady=2, sticky="ew")
-frm.grid_columnconfigure(0, weight=1)
-frm.grid_columnconfigure(1, weight=1)
-frm.grid_columnconfigure(2, weight=1)
-frm.grid_columnconfigure(3, weight=1)
-frm.grid_columnconfigure(4, weight=1)
-frm.grid_columnconfigure(5, weight=1)
-frm.grid_columnconfigure(6, weight=1)
-frm.grid_columnconfigure(7, weight=1)
+# === 新增底部橫向區塊 ===
+bottom_row_frame = tb.Frame(frm)
+bottom_row_frame.grid(row=10, column=0, columnspan=6, sticky="ew", pady=2)
+bottom_row_frame.grid_columnconfigure(0, weight=2)
+bottom_row_frame.grid_columnconfigure(1, weight=1)
+
+# 日誌顯示框（靠左，2/3寬）
+log_text = tb.Text(bottom_row_frame, height=8, width=60, state="disabled")
+log_text.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=(0, 4))
+
+# 右側清單列表
+right_list_frame = tb.Frame(bottom_row_frame)
+right_list_frame.grid(row=0, column=1, sticky="nsew", padx=(0, 2))
+right_list_frame.grid_rowconfigure(0, weight=1)
+right_list_frame.grid_columnconfigure(0, weight=1)
+
+
+right_listbox = tk.Listbox(right_list_frame, height=8, width=30)
+right_listbox.grid(row=0, column=0, sticky="nsew", padx=0, pady=(0, 2))
+
+
+# 右側底部兩個小按鈕
+btns_frame = tb.Frame(right_list_frame)
+btns_frame.grid(row=1, column=0, sticky="ew")
+clear_btn = tb.Button(btns_frame, text="清除", width=6)
+clear_btn.pack(side="left", padx=(0, 2))
+keep_btn = tb.Button(btns_frame, text="保留", width=6)
+keep_btn.pack(side="left")
+
+# 啟動/關閉按鈕區域寬度與日誌框一致
+btns_outer_frame = tb.Frame(frm)
+btns_outer_frame.grid(row=8, column=0, columnspan=6, sticky="ew", padx=(0, 4), pady=(8, 4))
+btns_outer_frame.grid_columnconfigure(0, weight=1)
+btns_outer_frame.grid_columnconfigure(1, weight=1)
+
+open_btns_frame = tb.Frame(btns_outer_frame, borderwidth=1, relief="solid", padding=4)
+open_btns_frame.grid(row=0, column=0, sticky="ew")
+open_btns_frame.grid_columnconfigure((0,1), weight=1)
+
+close_btns_frame = tb.Frame(btns_outer_frame, borderwidth=1, relief="solid", padding=4)
+close_btns_frame.grid(row=0, column=1, sticky="ew")
+close_btns_frame.grid_columnconfigure((0,1), weight=1)
+
+for idx, code in enumerate(group_labels):
+    row = 0 if idx < 2 else 1
+    col = idx % 2
+    btn = tb.Button(
+        open_btns_frame,
+        text=f"啟動 {group_display_names[code].get()}",
+        bootstyle="success-outline",
+        command=lambda c=code: start_group_opening(c),
+        width=8
+    )
+    btn.grid(row=row, column=col, padx=(8, 8), pady=(4, 4), sticky="ew")
+    group_buttons[code] = btn
+
+for idx, code in enumerate(group_labels):
+    row = 0 if idx < 2 else 1
+    col = idx % 2
+    close_btn = tb.Button(
+        close_btns_frame,
+        text=f"關閉 {group_display_names[code].get()}",
+        bootstyle="danger-outline",
+        command=lambda c=code: close_group_windows(c),
+        width=8
+    )
+    close_btn.grid(row=row, column=col, padx=(8, 8), pady=(4, 4), sticky="ew")
+    close_buttons[code] = close_btn
 
 def update_checkboxes(folder):
     files = [f for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))]
