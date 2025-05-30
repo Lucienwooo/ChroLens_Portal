@@ -19,10 +19,10 @@ from win32com.shell import shell, shellcon
 import subprocess
 import sys
 import json
-import win32con
-import keyboard  # 請確保已安裝
+import keyboard
 from tkinter import font as tkfont
 import functools
+import atexit
 
 LAST_PATH_FILE = "last_path.txt"
 SETTINGS_FILE = "chrolens_portal.json"
@@ -123,8 +123,8 @@ def choose_folder():
         folder_var.set(folder)
         save_last_path(folder)
         show_files_in_folder(folder)
-        update_checkboxes(folder)
-        update_file_list()  # 新增：刷新下方檔案清單
+        update_file_list()
+        update_window_list()  # 新增：刷新右側視窗清單
 
 def show_files_in_folder(folder):
     pass
@@ -185,6 +185,7 @@ def save_last_path(path):
     with open(LAST_PATH_FILE, "w", encoding="utf-8") as f:
         f.write(path)
 
+# === 介面區塊 ===
 app = tb.Window(themename="darkly")
 app.title("ChroLens_Portal 1.0.0")
 try:
@@ -202,11 +203,6 @@ group_codes = ["A", "B", "C", "D"]
 group_display_names = {c: tk.StringVar(value=c) for c in group_codes}
 group_buttons = {}
 close_buttons = {}
-# === 介面區塊 ===
-
-folder_var = tb.StringVar(value=load_last_path())
-interval_var = tb.StringVar(value="4")
-
 frm = tb.Frame(app, padding=2)
 frm.pack(fill="both", expand=True)
 
@@ -215,6 +211,9 @@ top_row_frame.grid(row=0, column=0, columnspan=6, sticky="ew", pady=(2, 2))
 top_row_frame.grid_columnconfigure(0, weight=0)
 top_row_frame.grid_columnconfigure(1, weight=0)
 top_row_frame.grid_columnconfigure(2, weight=0)
+
+folder_var = tb.StringVar(value="")
+interval_var = tb.StringVar(value="4")
 
 folder_frame = tb.Frame(top_row_frame, padding=(2,2))
 folder_frame.grid(row=0, column=0, sticky="w", padx=(0, 4))
@@ -225,6 +224,13 @@ interval_frame = tb.Frame(top_row_frame, padding=(2,2))
 interval_frame.grid(row=0, column=1, sticky="w", padx=(0, 4))
 tb.Label(interval_frame, text="間隔秒數:").grid(row=0, column=0, sticky="w")
 tb.Entry(interval_frame, textvariable=interval_var, width=5).grid(row=0, column=1, padx=(2,0), sticky="w")
+
+# 新增「存檔」按鈕
+def manual_save():
+    save_settings()
+    log("已手動儲存設定檔")
+save_btn = tb.Button(top_row_frame, text="存檔", command=manual_save, bootstyle="info")
+save_btn.grid(row=0, column=5, padx=(8,2), sticky="e")
 
 # === 新版：快捷鍵設定（僅允許 ALT+任意鍵 或 CTRL+任意鍵）===
 default_hotkeys = ["Alt+1", "Alt+2", "Alt+3", "Alt+4"]
@@ -466,8 +472,8 @@ for row, col, text, code, bootstyle, cmd in group_btn_grid:
         text=f"{text} {group_display_names[code].get()}",
         bootstyle=bootstyle,
         command=cmd,
-        width=8,
-        style="Mid.TButton"
+        width=8
+        # style="Mid.TButton"  # ← 移除這一行
     )
     btn.grid(row=row, column=col, padx=(4, 4), pady=(2, 2), sticky="nsew")
     if text == "啟動":
@@ -479,24 +485,25 @@ for row, col, text, code, bootstyle, cmd in group_btn_grid:
 btns_outer_frame.grid_rowconfigure(8, weight=1)
 btns_outer_frame.grid_rowconfigure(9, weight=1)
 
-# --- 下方清單區塊（左一欄為檔案，右三欄為視窗，四欄平均分配） ---
+# --- 下方清單區塊（左：檔案名稱，右：視窗名稱） ---
 bottom_frame = tb.Frame(frm)
 bottom_frame.grid(row=10, column=0, columnspan=6, sticky="ew", pady=(8, 2))
-for i in range(4):
-    bottom_frame.grid_columnconfigure(i, weight=1)
+bottom_frame.grid_columnconfigure(0, weight=0)  # 檔案列表固定寬度
+bottom_frame.grid_columnconfigure(1, weight=1)  # 視窗列表自動撐滿
 bottom_frame.grid_rowconfigure(0, weight=1)
 
-# 左一欄：檔案清單（有下拉卷軸）
-file_list_outer = tb.Frame(bottom_frame)
-file_list_outer.grid(row=0, column=0, sticky="nsew")
+# 左：檔案名稱列表（寬度與動態紀錄按鈕一致，建議 width=90，可依需求微調）
+file_list_outer = tb.Frame(bottom_frame, width=290)
+file_list_outer.grid(row=0, column=0, sticky="nsw")
+file_list_outer.grid_propagate(False)  # 固定寬度不被內容撐開
 file_list_outer.grid_rowconfigure(0, weight=1)
 file_list_outer.grid_columnconfigure(0, weight=1)
 
-file_list_canvas = tk.Canvas(file_list_outer, highlightthickness=0)
+file_list_canvas = tk.Canvas(file_list_outer, highlightthickness=0, height=120)
 file_list_canvas.grid(row=0, column=0, sticky="nsew")
 file_list_vscroll = tk.Scrollbar(file_list_outer, orient="vertical", command=file_list_canvas.yview)
-file_list_vscroll.grid(row=0, column=1, sticky="ns")
 file_list_canvas.configure(yscrollcommand=file_list_vscroll.set)
+# 卷軸隱藏，不 grid 也不 pack
 
 file_list_inner_frame = tb.Frame(file_list_canvas)
 file_list_canvas.create_window((0, 0), window=file_list_inner_frame, anchor="nw")
@@ -505,7 +512,42 @@ def _on_file_frame_configure(event):
     file_list_canvas.configure(scrollregion=file_list_canvas.bbox("all"))
 file_list_inner_frame.bind("<Configure>", _on_file_frame_configure)
 
+# 右：視窗名稱列表（自動撐滿剩餘空間）
+window_list_outer = tb.Frame(bottom_frame)
+window_list_outer.grid(row=0, column=1, sticky="nsew")
+window_list_outer.grid_rowconfigure(0, weight=1)
+window_list_outer.grid_columnconfigure(0, weight=1)
+
+window_list_canvas = tk.Canvas(window_list_outer, highlightthickness=0)
+window_list_canvas.grid(row=0, column=0, sticky="nsew")
+window_list_hscroll = tk.Scrollbar(window_list_outer, orient="horizontal", command=window_list_canvas.xview)
+window_list_canvas.configure(xscrollcommand=window_list_hscroll.set)
+# 卷軸隱藏，不 grid 也不 pack
+
+window_list_inner_frame = tb.Frame(window_list_canvas)
+window_list_canvas.create_window((0, 0), window=window_list_inner_frame, anchor="nw")
+
+window_list_frames = []
+max_cols = 3
+for i in range(max_cols):
+    frame = tb.Frame(window_list_inner_frame)
+    frame.grid(row=0, column=i, sticky="nsew")
+    window_list_frames.append(frame)
+
+def _on_window_frame_configure(event):
+    window_list_canvas.configure(scrollregion=window_list_canvas.bbox("all"))
+window_list_inner_frame.bind("<Configure>", _on_window_frame_configure)
+
+def get_taskbar_window_titles():
+    titles = []
+    def enum_handler(hwnd, _):
+        if win32gui.IsWindowVisible(hwnd) and win32gui.GetWindowText(hwnd):
+            titles.append(win32gui.GetWindowText(hwnd))
+    win32gui.EnumWindows(enum_handler, None)
+    return titles
+
 def update_file_list():
+    # 取得目前資料夾檔案
     for widget in file_list_inner_frame.winfo_children():
         widget.destroy()
     folder = folder_var.get()
@@ -513,82 +555,42 @@ def update_file_list():
         return
     files = [f for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))]
     files.sort()
-    # 垂直顯示，超過5個用下拉卷軸
     for row, fname in enumerate(files):
-        lbl = tb.Label(
-            file_list_inner_frame,
-            text=fname,
-            width=22,
-            anchor="w",
-            background="#333333",
-            foreground="#ffffff",
-            font=default_font
-        )
-        lbl.grid(row=row, column=0, padx=2, pady=1, sticky="ew")
-        # 拖移功能
+        lbl = tb.Label(file_list_inner_frame, text=fname, anchor="w", width=15, font=default_font)
+        lbl.grid(row=row, column=0, sticky="ew", padx=2, pady=1)
         lbl.bind("<ButtonPress-1>", lambda e, t=fname: on_label_drag_start(e, t))
     file_list_inner_frame.update_idletasks()
-    # 自動隱藏垂直卷軸
-    if len(files) > 5:
-        file_list_vscroll.grid()
-    else:
-        file_list_vscroll.grid_remove()
-    file_list_canvas.config(scrollregion=file_list_canvas.bbox("all"), height=120)
-
-# 右三欄：捕捉視窗列表
-window_list_frames = []
-for i in range(3):
-    frame = tb.Frame(bottom_frame)
-    frame.grid(row=0, column=i+1, sticky="nsew")
-    window_list_frames.append(frame)
-
-def get_taskbar_window_titles():
-    titles = []
-    hidden_keywords = [
-        "設定", "windows 輸入體驗", "windows input experience", "searchui", "cortana", "lockapp", "program manager"
-    ]
-    def enum_handler(hwnd, _):
-        if (
-            win32gui.IsWindowVisible(hwnd)
-            and win32gui.GetWindowText(hwnd)
-            and not win32gui.IsIconic(hwnd)
-            and win32gui.GetParent(hwnd) == 0
-            and win32gui.GetWindow(hwnd, win32con.GW_OWNER) == 0
-        ):
-            ex_style = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
-            if ex_style & win32con.WS_EX_TOOLWINDOW:
-                return
-            t = win32gui.GetWindowText(hwnd)
-            t_lower = t.strip().lower()
-            if not t_lower:
-                return
-            for kw in hidden_keywords:
-                if kw in t_lower:
-                    return
-            titles.append(t)
-    win32gui.EnumWindows(enum_handler, None)
-    return titles
+    file_list_canvas.config(scrollregion=file_list_canvas.bbox("all"))
 
 def update_window_list():
-    titles = get_taskbar_window_titles()
-    max_rows = 5
-    max_cols = 3
-    # 清空
     for frame in window_list_frames:
         for widget in frame.winfo_children():
             widget.destroy()
-    # 填入
+    titles = get_taskbar_window_titles()
+    max_rows = 5
+    max_cols = 3
     for col in range(max_cols):
         for row in range(max_rows):
             idx = col * max_rows + row
             if idx < len(titles):
                 title = titles[idx]
-                lbl = tb.Label(window_list_frames[col], text=title, width=22, anchor="w", font=default_font)
-                lbl.grid(row=row, column=0, padx=2, pady=1, sticky="ew")
-                # 拖移功能
+                lbl = tb.Label(window_list_frames[col], text=title, anchor="w", width=22, font=default_font)
+                lbl.grid(row=row, column=0, sticky="ew", padx=2, pady=1)
                 lbl.bind("<ButtonPress-1>", lambda e, t=title: on_label_drag_start(e, t))
+    window_list_inner_frame.update_idletasks()
+    window_list_canvas.config(scrollregion=window_list_canvas.bbox("all"))
 
-# --- 拖移功能（確保這段有在你的主程式） ---
+# 啟動時呼叫
+update_file_list()
+update_window_list()
+
+# 滑鼠橫向滾輪支援
+def _on_window_mousewheel(event):
+    window_list_canvas.xview_scroll(int(-1*(event.delta/120)), "units")
+window_list_canvas.bind("<Enter>", lambda e: window_list_canvas.bind_all("<MouseWheel>", _on_window_mousewheel))
+window_list_canvas.bind("<Leave>", lambda e: window_list_canvas.unbind_all("<MouseWheel>"))
+
+# --- 拖移功能 ---
 dragged_window_title = {"title": None}
 drag_label_popup = {"win": None}
 
@@ -627,10 +629,6 @@ def on_label_drag_start(event, title):
         app.unbind("<ButtonRelease-1>")
         dragged_window_title["title"] = None
     app.bind("<ButtonRelease-1>", on_drop)
-
-# --- 初始化 ---
-update_file_list()
-update_window_list()
 
 # --- 讓 15 組分組框的檔案名稱框支援右鍵清空 ---
 for entry, *_ in checkbox_vars_entries:
@@ -730,5 +728,183 @@ for idx, var in enumerate(group_hotkeys):
     var.trace_add("write", lambda *a, i=idx: register_global_hotkeys())
 
 register_global_hotkeys()
+
+def start_group_opening(group_code):
+    folder = folder_var.get()
+    try:
+        interval = float(interval_var.get())
+    except ValueError:
+        log("請輸入正確的間隔秒數")
+        return
+    if not os.path.isdir(folder):
+        log("請選擇正確的資料夾")
+        return
+    files = get_group_files(group_code)
+    if not files:
+        log(f"分組 {group_display_names[group_code].get()} 沒有檔案")
+        return
+    log(f"開始開啟分組 {group_display_names[group_code].get()} 的檔案於 {folder}")
+    def open_files():
+        for file in files:
+            file_path = os.path.join(folder, file)
+            if not os.path.exists(file_path):
+                log(f"找不到檔案: {file_path}")
+                continue
+            try:
+                if file.lower().endswith('.lnk'):
+                    target, args = open_lnk_target(file_path)
+                    if target and os.path.exists(target):
+                        log(f"Opening shortcut target: {target} {args}")
+                        subprocess.Popen(
+                            f'"{target}" {args}',
+                            shell=True,
+                            creationflags=subprocess.CREATE_NO_WINDOW
+                        )
+                    else:
+                        log(f"無法解析捷徑或目標不存在: {file_path}")
+                else:
+                    log(f"Opening: {file_path}")
+                    os.startfile(file_path)
+            except Exception as e:
+                log(f"無法開啟: {file_path}，錯誤：{e}")
+            time.sleep(interval)
+    threading.Thread(target=open_files, daemon=True).start()
+
+def close_group_windows(group_code):
+    files = get_group_files(group_code)
+    if not files:
+        log(f"分組 {group_display_names[group_code].get()} 沒有檔案")
+        return
+
+    keywords = []
+    for filename in files:
+        filename = filename.strip().lower()
+        if filename:
+            keywords.append(filename)
+            if "." in filename:
+                keywords.append(os.path.splitext(filename)[0])
+    keywords = list(set(keywords))
+
+    log(f"【DEBUG】關閉時關鍵字: {keywords}")
+
+    closed_any = False
+
+    # 新增：列出所有視窗標題
+    all_titles = []
+    def collect_titles(hwnd, _):
+        if win32gui.IsWindowVisible(hwnd):
+            t = win32gui.GetWindowText(hwnd)
+            if t:
+                all_titles.append(t)
+    win32gui.EnumWindows(collect_titles, None)
+    log(f"【DEBUG】目前所有視窗標題: {all_titles}")
+
+    def enum_handler(hwnd, _):
+        if win32gui.IsWindowVisible(hwnd):
+            window_text = win32gui.GetWindowText(hwnd)
+            window_text_lower = window_text.lower()
+            if any(kw and kw in window_text_lower for kw in keywords):
+                try:
+                    win32gui.PostMessage(hwnd, win32con.WM_CLOSE, 0, 0)
+                    log(f"已關閉視窗：{window_text}")
+                    nonlocal closed_any
+                    closed_any = True
+                except Exception as e:
+                    log(f"關閉視窗失敗：{window_text} ({e})")
+    win32gui.EnumWindows(enum_handler, None)
+    if not closed_any:
+        log(f"找不到分組 {group_display_names[group_code].get()} 的視窗可關閉")
+
+def save_settings():
+    try:
+        data = {
+            "folder": folder_var.get(),
+            "interval": interval_var.get(),
+            "group_display_names": {c: group_display_names[c].get() for c in group_codes},
+            "group_hotkeys": [v.get() for v in group_hotkeys],
+            "checkbox_entries": [entry.get() for entry, *_ in checkbox_vars_entries],
+            "group_var1": [var1.get() for _, var1, _, _, _ in checkbox_vars_entries],
+            "group_var2": [var2.get() for _, _, var2, _, _ in checkbox_vars_entries],
+        }
+        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        # 程式結束時 Tk 物件已銷毀，這裡忽略錯誤即可
+        pass
+
+def load_settings():
+    if not os.path.exists(SETTINGS_FILE):
+        return
+    try:
+        with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        folder_var.set(data.get("folder", folder_var.get()))
+        interval_var.set(data.get("interval", interval_var.get()))
+        for c in group_codes:
+            group_display_names[c].set(data.get("group_display_names", {}).get(c, c))
+        for i, v in enumerate(data.get("group_hotkeys", [])):
+            if i < len(group_hotkeys):
+                group_hotkeys[i].set(v)
+        entries = data.get("checkbox_entries", [])
+        for i, entry in enumerate(entries):
+            if i < len(checkbox_vars_entries):
+                ent = checkbox_vars_entries[i][0]
+                ent.config(state="normal")
+                ent.delete(0, END)
+                ent.insert(0, entry)
+                ent.config(state="readonly")
+        group_var1s = data.get("group_var1", [])
+        group_var2s = data.get("group_var2", [])
+        for i, v in enumerate(group_var1s):
+            if i < len(checkbox_vars_entries):
+                checkbox_vars_entries[i][1].set(v)
+        for i, v in enumerate(group_var2s):
+            if i < len(checkbox_vars_entries):
+                checkbox_vars_entries[i][2].set(v)
+    except Exception as e:
+        log(f"設定檔讀取失敗: {e}")
+
+# 在所有重要變動時呼叫 save_settings
+def on_any_change(*args):
+    save_settings()
+
+folder_var.trace_add("write", on_any_change)
+interval_var.trace_add("write", on_any_change)
+for c in group_codes:
+    group_display_names[c].trace_add("write", on_any_change)
+for v in group_hotkeys:
+    v.trace_add("write", on_any_change)
+for entry, *_ in checkbox_vars_entries:
+    entry.bind("<FocusOut>", lambda e: save_settings())
+    entry.bind("<KeyRelease>", lambda e: save_settings())
+for _, var1, var2, *_ in checkbox_vars_entries:
+    var1.trace_add("write", on_any_change)
+    var2.trace_add("write", on_any_change)
+
+# 關閉時自動儲存
+atexit.register(save_settings)
+
+# 啟動時自動載入
+load_settings()
+
+def _on_mousewheel(event):
+    file_list_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+file_list_canvas.bind_all("<MouseWheel>", _on_mousewheel)
+
+def _on_file_mousewheel(event):
+    file_list_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+file_list_canvas.bind("<Enter>", lambda e: file_list_canvas.bind_all("<MouseWheel>", _on_file_mousewheel))
+file_list_canvas.bind("<Leave>", lambda e: file_list_canvas.unbind_all("<MouseWheel>"))
+
+def _on_window_mousewheel(event):
+    window_list_canvas.xview_scroll(int(-1*(event.delta/120)), "units")
+window_list_canvas.bind("<Enter>", lambda e: window_list_canvas.bind_all("<MouseWheel>", _on_window_mousewheel))
+window_list_canvas.bind("<Leave>", lambda e: window_list_canvas.unbind_all("<MouseWheel>"))
+
+# --- 啟動時延遲0.5秒再讀取設定檔 ---
+def delayed_load_settings():
+    time.sleep(0.5)
+    app.after(0, lambda: [load_settings(), update_file_list(), update_window_list()])
+threading.Thread(target=delayed_load_settings, daemon=True).start()
 
 app.mainloop()
