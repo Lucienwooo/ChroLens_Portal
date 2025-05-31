@@ -1,6 +1,6 @@
 ### ChroLens_Portal 2.0 
 ### 2025/05/26 By Lucienwooo
-### pyinstaller --onedir --noconsole --add-data "冥想貓貓.ico;." --icon=冥想貓貓.ico --hidden-import=win32timezone ChroLens_Portal2.0.py 
+### pyinstaller --onedir --noconsole --add-data "冥想貓貓.ico;." --icon=冥想貓貓.ico --hidden-import=win32timezone ChroLens_Portal2.0.py
 ###### 分組視窗透過快捷鍵最上層顯示，半成品。
 # 新增清單窗格，顯示當前所有開啟的視窗名稱
 # 並且讓選單可以記憶所以從清單選取的檔案/視窗名稱
@@ -129,18 +129,35 @@ def choose_folder():
 def show_files_in_folder(folder):
     pass
 
+log_history = []
+
+def log(msg):
+    timestamp = time.strftime("%H:%M:%S")
+    full_msg = f"[{timestamp}] {msg}"
+    log_history.append(full_msg)
+    # 若日誌視窗已存在，則即時顯示
+    if hasattr(app, 'log_text') and app.log_text.winfo_exists():
+        app.log_text.config(state="normal")
+        app.log_text.insert("end", full_msg + "\n")
+        app.log_text.see("end")
+        app.log_text.config(state="disabled")
+
 def show_log_window():
     if hasattr(app, 'log_win') and app.log_win.winfo_exists():
         app.log_win.deiconify()
         return
     log_win = tk.Toplevel(app)
     log_win.title("動態紀錄")
-    log_win.geometry(f"400x600+{app.winfo_rootx()-400}+{app.winfo_rooty()}")  # 主程式左側外面
+    log_win.geometry(f"400x600+{app.winfo_rootx()-400}+{app.winfo_rooty()}")
     log_win.resizable(True, True)
     log_win.attributes('-topmost', True)
+    try:
+        ico_path = resource_path("冥想貓貓.ico")
+        log_win.iconbitmap(ico_path)
+    except Exception as e:
+        print(f"無法設定 log 視窗 icon: {e}")
     app.log_win = log_win
 
-    # 可拖曳
     def start_move(event):
         log_win._drag_start_x = event.x
         log_win._drag_start_y = event.y
@@ -151,10 +168,17 @@ def show_log_window():
     log_win.bind("<Button-1>", start_move)
     log_win.bind("<B1-Motion>", do_move)
 
-    # 日誌框
-    log_text = tb.Text(log_win, height=30, width=60, state="disabled")
+    log_text = tb.Text(log_win, height=30, width=60, state="normal")
     log_text.pack(fill="both", expand=True)
     app.log_text = log_text
+
+    # 顯示所有歷史紀錄
+    log_text.config(state="normal")
+    log_text.delete("1.0", "end")
+    for line in log_history:
+        log_text.insert("end", line + "\n")
+    log_text.see("end")
+    log_text.config(state="disabled")
 
 def toggle_log():
     if hasattr(app, 'log_win') and app.log_win.winfo_exists():
@@ -165,13 +189,161 @@ def toggle_log():
     else:
         show_log_window()
 
-# log() 函數需改为寫入 app.log_text
+def open_files_in_folder(folder_path, interval=4, log_func=None):
+    selected_files = []
+    for var, entry in checkbox_vars_entries:
+        if var.get():
+            selected_files.append(entry.get())
+    files = selected_files if selected_files else [f for f in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, f))]
+    files.sort()
+    for file in files:
+        file_path = os.path.join(folder_path, file)
+        try:
+            if file.lower().endswith('.lnk'):
+                target, args = open_lnk_target(file_path)
+                if target and os.path.exists(target):
+                    if log_func:
+                        log_func(f"Opening shortcut target: {target} {args}")
+                    subprocess.Popen(
+                        f'"{target}" {args}',
+                        shell=True,
+                        creationflags=subprocess.CREATE_NO_WINDOW
+                    )
+                else:
+                    if log_func:
+                        log_func(f"無法解析捷徑或目標不存在: {file_path}")
+            else:
+                if log_func:
+                    log_func(f"Opening: {file_path}")
+                os.startfile(file_path)
+        except Exception as e:
+            if log_func:
+                log_func(f"無法開啟: {file_path}，錯誤：{e}")
+        time.sleep(interval)
+
+def open_files_by_names(folder_path, file_names, interval=4, log_func=None):
+    files = [f for f in file_names if f]
+    for file in files:
+        file_path = os.path.join(folder_path, file)
+        try:
+            if file.lower().endswith('.lnk'):
+                target, args = open_lnk_target(file_path)
+                if target and os.path.exists(target):
+                    if log_func:
+                        log_func(f"Opening shortcut target: {target} {args}")
+                    subprocess.Popen(
+                        f'"{target}" {args}',
+                        shell=True,
+                        creationflags=subprocess.CREATE_NO_WINDOW
+                    )
+                else:
+                    if log_func:
+                        log_func(f"無法解析捷徑或目標不存在: {file_path}")
+            else:
+                if log_func:
+                    log_func(f"Opening: {file_path}")
+                os.startfile(file_path)
+        except Exception as e:
+            if log_func:
+                log_func(f"無法開啟: {file_path}，錯誤：{e}")
+        time.sleep(interval)
+
+def start_opening():
+    folder = folder_var.get()
+    try:
+        interval = float(interval_var.get())
+    except ValueError:
+        log("請輸入正確的間隔秒數")
+        return
+    if not os.path.isdir(folder):
+        log("請選擇正確的資料夾")
+        return
+    log(f"開始開啟 {folder} 內的檔案，每 {interval} 秒一個")
+    threading.Thread(target=open_files_in_folder, args=(folder, interval, log), daemon=True).start()
+
+def choose_folder():
+    folder = filedialog.askdirectory()
+    if folder:
+        folder_var.set(folder)
+        save_last_path(folder)
+        show_files_in_folder(folder)
+        update_file_list()
+        update_window_list()  # 新增：刷新右側視窗清單
+
+def show_files_in_folder(folder):
+    pass
+
+log_history = []
+
 def log(msg):
-    if hasattr(app, 'log_text'):
-        app.log_text.configure(state="normal")
-        app.log_text.insert("end", msg + "\n")
+    timestamp = time.strftime("%H:%M:%S")
+    full_msg = f"[{timestamp}] {msg}"
+    log_history.append(full_msg)
+    # 若日誌視窗已存在，則即時顯示
+    if hasattr(app, 'log_text') and app.log_text.winfo_exists():
+        app.log_text.config(state="normal")
+        app.log_text.insert("end", full_msg + "\n")
         app.log_text.see("end")
-        app.log_text.configure(state="disabled")
+        app.log_text.config(state="disabled")
+
+def show_log_window():
+    if hasattr(app, 'log_win') and app.log_win.winfo_exists():
+        app.log_win.deiconify()
+        return
+    log_win = tk.Toplevel(app)
+    log_win.title("動態紀錄")
+    log_win.geometry(f"400x600+{app.winfo_rootx()-400}+{app.winfo_rooty()}")
+    log_win.resizable(True, True)
+    log_win.attributes('-topmost', True)
+    # 設定 icon
+    try:
+        ico_path = resource_path("冥想貓貓.ico")
+        log_win.iconbitmap(ico_path)
+    except Exception as e:
+        print(f"無法設定 log 視窗 icon: {e}")
+    app.log_win = log_win
+
+    def start_move(event):
+        log_win._drag_start_x = event.x
+        log_win._drag_start_y = event.y
+    def do_move(event):
+        x = log_win.winfo_x() + event.x - log_win._drag_start_x
+        y = log_win.winfo_y() + event.y - log_win._drag_start_y
+        log_win.geometry(f"+{x}+{y}")
+    log_win.bind("<Button-1>", start_move)
+    log_win.bind("<B1-Motion>", do_move)
+
+    log_text = tb.Text(log_win, height=30, width=60, state="normal")
+    log_text.pack(fill="both", expand=True)
+    app.log_text = log_text
+
+    # 顯示所有歷史紀錄
+    for line in log_history:
+        log_text.insert("end", line + "\n")
+    log_text.see("end")
+    log_text.config(state="disabled")
+
+def toggle_log():
+    if hasattr(app, 'log_win') and app.log_win.winfo_exists():
+        if app.log_win.state() == 'normal':
+            app.log_win.withdraw()
+        else:
+            app.log_win.deiconify()
+    else:
+        show_log_window()
+
+log_history = []
+
+def log(msg):
+    timestamp = time.strftime("%H:%M:%S")
+    full_msg = f"[{timestamp}] {msg}"
+    log_history.append(full_msg)
+    # 無論日誌視窗是否顯示，都更新內容
+    if 'log_text' in globals() and log_text.winfo_exists():
+        log_text.config(state="normal")
+        log_text.insert("end", full_msg + "\n")
+        log_text.see("end")
+        log_text.config(state="disabled")
 
 def load_last_path():
     if os.path.exists(LAST_PATH_FILE):
@@ -296,12 +468,18 @@ for c in group_codes:
     group_display_names[c].trace_add("write", update_show_labels)
 
 # === 新版：全域快捷鍵觸發（僅 ALT+任意 或 CTRL+任意）===
+def is_entry_focused():
+    widget = app.focus_get()
+    return isinstance(widget, (tk.Entry, tb.Entry, tk.Text, tb.Combobox))
+
 def global_hotkey_handler(event):
+    if is_entry_focused():
+        return  # 有輸入框聚焦時不觸發
     pressed = format_hotkey(event)
     for idx, code in enumerate(group_codes):
         if pressed and pressed == group_hotkeys[idx].get():
             set_group_windows_topmost(code)
-            log(f"分組 {group_code} 置頂顯示（請補上實際置頂邏輯）")
+            log(f"分組 {group_display_names[code].get()} 置頂顯示")
             break
 
 app.bind_all("<Key>", global_hotkey_handler, add="+")
@@ -539,10 +717,14 @@ def _on_window_frame_configure(event):
 window_list_inner_frame.bind("<Configure>", _on_window_frame_configure)
 
 def get_taskbar_window_titles():
+    exclude_titles = ["設定", "windows 輸入體驗", "windows input experience"]  # 可自行擴充
     titles = []
     def enum_handler(hwnd, _):
-        if win32gui.IsWindowVisible(hwnd) and win32gui.GetWindowText(hwnd):
-            titles.append(win32gui.GetWindowText(hwnd))
+        if win32gui.IsWindowVisible(hwnd):
+            t = win32gui.GetWindowText(hwnd)
+            t_lower = t.strip().lower()
+            if t and all(ex not in t_lower for ex in exclude_titles):
+                titles.append(t)
     win32gui.EnumWindows(enum_handler, None)
     return titles
 
@@ -641,74 +823,61 @@ for entry, *_ in checkbox_vars_entries:
             log(f"清空分組欄位內容（原內容：{old}）")
     entry.bind("<Button-3>", clear_entry)  # 右鍵點擊清空內容
 
+retreated_hwnds = set()
+
 def set_group_windows_topmost(group_code):
-    import ctypes
+    global retreated_hwnds
     files = get_group_files(group_code)
     if not files:
         log(f"分組 {group_display_names[group_code].get()} 沒有檔案")
         return
-    # 取得分組視窗標題（小寫）
+
     target_titles = [os.path.splitext(os.path.basename(f))[0].lower() for f in files if f]
-    hwnd_list = []
-    other_hwnd_list = []
-    all_group_titles = set()
-    # 收集所有分組的視窗標題
-    for c in group_codes:
-        if c == group_code:
-            continue
-        for f in get_group_files(c):
-            all_group_titles.add(os.path.splitext(os.path.basename(f))[0].lower())
+    my_hwnd = app.winfo_id()
+    group_hwnds = set()
+    parent_hwnds = set()
 
     def enum_handler(hwnd, _):
-        if win32gui.IsWindowVisible(hwnd):
-            window_text = win32gui.GetWindowText(hwnd)
-            window_text_lower = window_text.lower()
-            if any(title and (window_text_lower == title or title in window_text_lower) for title in target_titles):
-                hwnd_list.append(hwnd)
-            elif any(title and (window_text_lower == title or title in window_text_lower) for title in all_group_titles):
-                other_hwnd_list.append(hwnd)
-            elif window_text.strip():
-                # 沒有分組的視窗也往下層退
-                other_hwnd_list.append(hwnd)
+        if not win32gui.IsWindowVisible(hwnd):
+            return
+        if hwnd == my_hwnd:
+            return
+        window_text = win32gui.GetWindowText(hwnd)
+        window_text_lower = window_text.lower().strip()
+        if not window_text_lower:
+            return
+        if any(title and title in window_text_lower for title in target_titles):
+            group_hwnds.add(hwnd)
+            parent = win32gui.GetParent(hwnd)
+            if parent and parent != 0 and parent != hwnd:
+                parent_hwnds.add(parent)
     win32gui.EnumWindows(enum_handler, None)
 
-    # 先將所有非分組視窗往下層退
-    for hwnd in other_hwnd_list:
+    other_hwnd_list = []
+    def enum_others(hwnd, _):
+        if not win32gui.IsWindowVisible(hwnd):
+            return
+        if hwnd == my_hwnd or hwnd in group_hwnds or hwnd in parent_hwnds:
+            return
+        for g_hwnd in group_hwnds:
+            if win32gui.IsChild(g_hwnd, hwnd):
+                return
+        other_hwnd_list.append(hwnd)
+    win32gui.EnumWindows(enum_others, None)
+
+    # 只對新出現的視窗退後一次
+    new_to_retreated = [hwnd for hwnd in other_hwnd_list if hwnd not in retreated_hwnds]
+    for hwnd in new_to_retreated:
         try:
             win32gui.SetWindowPos(
                 hwnd, win32con.HWND_BOTTOM, 0, 0, 0, 0,
                 win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_NOACTIVATE
             )
+            retreated_hwnds.add(hwnd)
         except Exception:
             pass
 
-    # 再將分組視窗全部浮到最上層，並還原被縮小的
-    found_any = False
-    for hwnd in hwnd_list:
-        try:
-            # 還原被縮小的視窗
-            if win32gui.IsIconic(hwnd):
-                win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-            try:
-                ctypes.windll.user32.AllowSetForegroundWindow(-1)
-            except Exception:
-                pass
-            win32gui.SetForegroundWindow(hwnd)
-            win32gui.SetWindowPos(
-                hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0,
-                win32con.SWP_NOMOVE | win32con.SWP_NOSIZE
-            )
-            win32gui.SetWindowPos(
-                hwnd, win32con.HWND_NOTOPMOST, 0, 0, 0, 0,
-                win32con.SWP_NOMOVE | win32con.SWP_NOSIZE
-            )
-            found_any = True
-        except Exception as e:
-            log(f"bring to front 失敗: {win32gui.GetWindowText(hwnd)} ({e})")
-    if found_any:
-        log(f"已將分組 {group_display_names[group_code].get()} 的視窗全部浮現到最前方")
-    else:
-        log(f"找不到符合的視窗，已將其他視窗往下層退。")
+    log(f"已將分組 {group_display_names[group_code].get()} 以外的視窗全部退到最下層（本次退後 {len(new_to_retreated)} 個）")
 
 def register_global_hotkeys():
     for idx, code in enumerate(group_codes):
@@ -861,9 +1030,11 @@ def load_settings():
         for i, v in enumerate(group_var2s):
             if i < len(checkbox_vars_entries):
                 checkbox_vars_entries[i][2].set(v)
+        # --- 新增：強制同步 UI 顯示 ---
+        update_show_labels()
+        update_group_name()
     except Exception as e:
         log(f"設定檔讀取失敗: {e}")
-
 # 在所有重要變動時呼叫 save_settings
 def on_any_change(*args):
     save_settings()
@@ -906,5 +1077,15 @@ def delayed_load_settings():
     time.sleep(0.5)
     app.after(0, lambda: [load_settings(), update_file_list(), update_window_list()])
 threading.Thread(target=delayed_load_settings, daemon=True).start()
+
+def auto_refresh_window_list():
+    # 若主視窗被縮小（iconic），則不刷新
+    if app.state() != "iconic":
+        update_window_list()
+    # 每5秒再呼叫自己
+    app.after(5000, auto_refresh_window_list)
+
+# 啟動時呼叫一次
+auto_refresh_window_list()
 
 app.mainloop()
