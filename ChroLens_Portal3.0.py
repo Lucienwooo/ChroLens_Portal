@@ -366,7 +366,7 @@ default_font = tkfont.Font(family="Microsoft JhengHei", size=12)
 app.option_add("*Font", default_font)
 
 # === 分組代碼與顯示名稱 ===
-group_codes = ["A", "B", "C", "D"]
+group_codes = ["A", "B", "C", "D", "E", "F"]
 group_display_names = {c: tk.StringVar(value=c) for c in group_codes}
 group_buttons = {}
 close_buttons = {}
@@ -400,8 +400,8 @@ save_btn = tb.Button(top_row_frame, text="存檔", command=manual_save, bootstyl
 save_btn.grid(row=0, column=5, padx=(8,2), sticky="e")
 
 # === 新版：快捷鍵設定（僅允許 ALT+任意鍵 或 CTRL+任意鍵）===
-default_hotkeys = ["Alt+1", "Alt+2", "Alt+3", "Alt+4"]
-group_hotkeys = [tk.StringVar(value=default_hotkeys[i]) for i in range(4)]
+default_hotkeys = ["Alt+1", "Alt+2", "Alt+3", "Alt+4", "Alt+5", "Alt+6"]
+group_hotkeys = [tk.StringVar(value=default_hotkeys[i]) for i in range(6)]
 
 def format_hotkey(event):
     # 只允許 ALT+任意 或 CTRL+任意
@@ -433,8 +433,9 @@ def on_hotkey_entry_key(event, idx):
 # --- 第二排：啟動A/B/C/D顯示快捷鍵（加框） ---
 show_label_frames = []
 second_row_frame = tb.Frame(frm)
-second_row_frame.grid(row=1, column=0, columnspan=6, sticky="ew")
-second_row_frame.grid_columnconfigure((0,1,2,3,4), weight=1)  # 讓五個元件平均分配
+second_row_frame.grid(row=1, column=0, columnspan=8, sticky="ew")
+for i in range(7):  # 0~6 共7格
+    second_row_frame.grid_columnconfigure(i, weight=1)
 
 show_label_font = tkfont.Font(family="Microsoft JhengHei", size=12)  # 統一字體大小
 
@@ -444,7 +445,7 @@ desc_label.grid(row=0, column=0, padx=2, pady=2, sticky="ew")
 
 for idx, code in enumerate(group_codes):
     frame = tb.Frame(second_row_frame, borderwidth=2, relief="groove")
-    frame.grid(row=0, column=idx+1, padx=2, pady=2, sticky="ew")  # idx+1，往右推一格
+    frame.grid(row=0, column=idx+1, padx=2, pady=2, sticky="ew")
     show_label = tb.Label(frame, text=f"{group_display_names[code].get()} 組", width=6, font=show_label_font)
     show_label.pack(side="left")
     hotkey_entry = tb.Entry(frame, textvariable=group_hotkeys[idx], width=8, state="readonly", justify="center", font=show_label_font)
@@ -631,12 +632,16 @@ group_btn_grid = [
     # row, col, text, group_code, bootstyle, command
     (8, 1, "啟動", "A", "success-outline", lambda: start_group_opening("A")),
     (8, 2, "啟動", "B", "success-outline", lambda: start_group_opening("B")),
-    (8, 3, "關閉", "A", "danger-outline", lambda: close_group_windows("A")),
-    (8, 4, "關閉", "B", "danger-outline", lambda: close_group_windows("B")),
+    (8, 3, "啟動", "E", "success-outline", lambda: start_group_opening("E")),
+    (8, 4, "關閉", "A", "danger-outline", lambda: close_group_windows("A")),
+    (8, 5, "關閉", "B", "danger-outline", lambda: close_group_windows("B")),
+    (8, 6, "關閉", "E", "danger-outline", lambda: close_group_windows("E")),
     (9, 1, "啟動", "C", "success-outline", lambda: start_group_opening("C")),
     (9, 2, "啟動", "D", "success-outline", lambda: start_group_opening("D")),
-    (9, 3, "關閉", "C", "danger-outline", lambda: close_group_windows("C")),
-    (9, 4, "關閉", "D", "danger-outline", lambda: close_group_windows("D")),
+    (9, 3, "啟動", "F", "success-outline", lambda: start_group_opening("F")),
+    (9, 4, "關閉", "C", "danger-outline", lambda: close_group_windows("C")),
+    (9, 5, "關閉", "D", "danger-outline", lambda: close_group_windows("D")),
+    (9, 6, "關閉", "F", "danger-outline", lambda: close_group_windows("F")),
 ]
 
 for row, col, text, code, bootstyle, cmd in group_btn_grid:
@@ -646,7 +651,6 @@ for row, col, text, code, bootstyle, cmd in group_btn_grid:
         bootstyle=bootstyle,
         command=cmd,
         width=8
-        # style="Mid.TButton"  # ← 移除這一行
     )
     btn.grid(row=row, column=col, padx=(4, 4), pady=(2, 2), sticky="nsew")
     if text == "啟動":
