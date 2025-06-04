@@ -5,6 +5,12 @@
 # 目前頂層顯示，某些視窗還是無法正常顯示
 # 檔案只能開啟當前路徑，即便先前在別的路徑取得檔案名稱到分組
 # 仍然會只能開啟當前資料夾
+
+# row 0：頂部工具列（資料夾選擇、間隔秒數、分組名稱編輯、存檔按鈕）
+# row 1：分組置頂顯示切換區（顯示分組名稱與快捷鍵）
+# row 2：分組檔案列（15組分組欄位，分3欄顯示，每行3個分組下拉選單）
+# row 8~10：左側為動態紀錄顯示區，右側為啟動/關閉分組按鈕
+# row 10：右側為下方清單區塊（左：檔案名稱列表，右：視窗名稱列表）
 import os
 import time
 import win32gui
@@ -171,6 +177,16 @@ def show_log_window():
     log_text.see("end")
     log_text.config(state="disabled")
 
+log_history = []
+
+# 新增：啟動時自動顯示歷史紀錄
+if log_history:
+    log_text.config(state="normal")
+    for line in log_history:
+        log_text.insert("end", line + "\n")
+    log_text.see("end")
+    log_text.config(state="disabled")
+
 def toggle_log():
     if hasattr(app, 'log_win') and app.log_win.winfo_exists():
         if app.log_win.state() == 'normal':
@@ -274,12 +290,12 @@ def log(msg):
     timestamp = time.strftime("%H:%M:%S")
     full_msg = f"[{timestamp}] {msg}"
     log_history.append(full_msg)
-    # 若日誌視窗已存在，則即時顯示
-    if hasattr(app, 'log_text') and app.log_text.winfo_exists():
-        app.log_text.config(state="normal")
-        app.log_text.insert("end", full_msg + "\n")
-        app.log_text.see("end")
-        app.log_text.config(state="disabled")
+    # 直接顯示在 log_text
+    if log_text.winfo_exists():
+        log_text.config(state="normal")
+        log_text.insert("end", full_msg + "\n")
+        log_text.see("end")
+        log_text.config(state="disabled")
 
 def show_log_window():
     if hasattr(app, 'log_win') and app.log_win.winfo_exists():
@@ -313,6 +329,14 @@ def show_log_window():
     app.log_text = log_text
 
     # 顯示所有歷史紀錄
+    for line in log_history:
+        log_text.insert("end", line + "\n")
+    log_text.see("end")
+    log_text.config(state="disabled")
+
+# 新增：啟動時自動顯示歷史紀錄
+if log_history:
+    log_text.config(state="normal")
     for line in log_history:
         log_text.insert("end", line + "\n")
     log_text.see("end")
@@ -352,6 +376,10 @@ def save_last_path(path):
     with open(LAST_PATH_FILE, "w", encoding="utf-8") as f:
         f.write(path)
 
+# --- 主 Frame ---
+frm = tb.Frame(app, padding=2)
+frm.pack(fill="both", expand=True)
+
 # === 介面區塊 ===
 app = tb.Window(themename="darkly")
 app.title("ChroLens_Portal 2.0.0")
@@ -365,16 +393,9 @@ except Exception as e:
 default_font = tkfont.Font(family="Microsoft JhengHei", size=12)
 app.option_add("*Font", default_font)
 
-# === 分組代碼與顯示名稱 ===
-group_codes = ["A", "B", "C", "D", "E", "F"]
-group_display_names = {c: tk.StringVar(value=c) for c in group_codes}
-group_buttons = {}
-close_buttons = {}
-frm = tb.Frame(app, padding=2)
-frm.pack(fill="both", expand=True)
-
-top_row_frame = tb.Frame(frm, padding=2)
-top_row_frame.grid(row=0, column=0, columnspan=6, sticky="ew", pady=(2, 2))
+# --- row 0：頂部工具列 ---
+top_row_frame = tb.Frame(app, padding=2)
+top_row_frame.grid(row=0, column=0, columnspan=8, sticky="ew", pady=(2, 2))
 top_row_frame.grid_columnconfigure(0, weight=0)
 top_row_frame.grid_columnconfigure(1, weight=0)
 top_row_frame.grid_columnconfigure(2, weight=0)
@@ -400,7 +421,7 @@ save_btn = tb.Button(top_row_frame, text="存檔", command=manual_save, bootstyl
 save_btn.grid(row=0, column=5, padx=(8,2), sticky="e")
 
 # === 新版：快捷鍵設定（僅允許 ALT+任意鍵 或 CTRL+任意鍵）===
-default_hotkeys = ["Alt+1", "Alt+2", "Alt+3", "Alt+4", "Alt+5", "Alt+6"]
+default_hotkeys = ["Alt+1", "Alt+2", "Alt+3", "Alt+4", "Alt+Q", "Alt+W"]
 group_hotkeys = [tk.StringVar(value=default_hotkeys[i]) for i in range(6)]
 
 def format_hotkey(event):
@@ -440,7 +461,7 @@ for i in range(7):  # 0~6 共7格
 show_label_font = tkfont.Font(family="Microsoft JhengHei", size=12)  # 統一字體大小
 
 # 新增最左邊的說明文字
-desc_label = tb.Label(second_row_frame, text="置頂顯示切換", width=12, anchor="center", font=show_label_font)
+desc_label = tb.Label(second_row_frame, text="置頂切換", width=12, anchor="center", font=show_label_font)
 desc_label.grid(row=0, column=0, padx=2, pady=2, sticky="ew")
 
 for idx, code in enumerate(group_codes):
@@ -575,12 +596,17 @@ for i in range(15):
     entry = tb.Entry(group_frames[i // 5], width=14, state="readonly")
     group_var1 = tk.StringVar(value="")
     group_var2 = tk.StringVar(value="")
+    group_var3 = tk.StringVar(value="")  # 新增第三個分組選單
     group_combo1 = tb.Combobox(
         group_frames[i // 5], textvariable=group_var1,
         values=[""] + [group_display_names[c].get() for c in group_codes], width=4, state="readonly"
     )
     group_combo2 = tb.Combobox(
         group_frames[i // 5], textvariable=group_var2,
+        values=[""] + [group_display_names[c].get() for c in group_codes], width=4, state="readonly"
+    )
+    group_combo3 = tb.Combobox(
+        group_frames[i // 5], textvariable=group_var3,
         values=[""] + [group_display_names[c].get() for c in group_codes], width=4, state="readonly"
     )
     row = i % 5
@@ -592,58 +618,48 @@ for i in range(15):
     entry.grid(row=row, column=1, padx=0, pady=1)
     group_combo1.grid(row=row, column=2, padx=0, pady=1)
     group_combo2.grid(row=row, column=3, padx=0, pady=1)
-    checkbox_vars_entries.append((entry, group_var1, group_var2, group_combo1, group_combo2))
+    group_combo3.grid(row=row, column=4, padx=0, pady=1)  # 新增第三個下拉選單
+    checkbox_vars_entries.append((entry, group_var1, group_var2, group_var3, group_combo1, group_combo2, group_combo3))
 
 def get_group_files(group_code):
     files = []
-    for entry, group_var1, group_var2, *_ in checkbox_vars_entries:
+    for entry, group_var1, group_var2, group_var3, *_ in checkbox_vars_entries:
         code1 = get_group_code_by_display_name(group_var1.get())
         code2 = get_group_code_by_display_name(group_var2.get())
+        code3 = get_group_code_by_display_name(group_var3.get())
         filename = entry.get()
-        if filename and (group_code == code1 or group_code == code2):
+        if filename and (group_code == code1 or group_code == code2 or group_code == code3):
             files.append(filename)
     return files
 
-# --- 啟動/關閉/動態紀錄按鈕區域 ---
+# --- row 8~10 動態日誌區塊 ---
+log_text = tb.Text(frm, height=18, width=18, state="disabled", wrap="word", font=default_font)
+log_text.grid(row=8, column=0, rowspan=3, sticky="nsew", padx=(0, 8), pady=(0, 0))
+frm.grid_rowconfigure(8, weight=1)
+frm.grid_rowconfigure(9, weight=1)
+frm.grid_rowconfigure(10, weight=1)
+frm.grid_columnconfigure(0, weight=0)
+
+# --- row 8~9 啟動/關閉分組按鈕區域 ---
 btns_outer_frame = tb.Frame(frm)
-btns_outer_frame.grid(row=8, column=0, columnspan=6, sticky="ew", padx=(0, 4), pady=(8, 4))
-for i in range(5):
+btns_outer_frame.grid(row=8, column=1, rowspan=2, columnspan=6, sticky="ew", padx=(0, 4), pady=(8, 4))
+for i in range(6):
     btns_outer_frame.grid_columnconfigure(i, weight=1)
 
-from tkinter import font as tkfont
-big_btn_font = tkfont.Font(family="Microsoft JhengHei", size=18, weight="bold")
-mid_btn_font = tkfont.Font(family="Microsoft JhengHei", size=13, weight="bold")  # 放大一級
-
-style = tb.Style()
-style.configure("Big.TButton", font=big_btn_font)
-style.configure("Mid.TButton", font=mid_btn_font)
-
-dynamic_log_btn = tb.Button(
-    btns_outer_frame, text="動態\n紀錄", width=6, command=toggle_log, bootstyle="info", style="Big.TButton"
-)
-dynamic_log_btn.grid(row=8, column=0, rowspan=2, sticky="nsew", padx=(0, 8), pady=(0, 0))
-
-# 讓 col=1~4 都能自動撐開
-for i in range(1, 5):
-    btns_outer_frame.grid_columnconfigure(i, weight=1)
-
-# 啟動/關閉按鈕
 group_btn_grid = [
-    # row, col, text, group_code, bootstyle, command
-    (8, 1, "啟動", "A", "success-outline", lambda: start_group_opening("A")),
-    (8, 2, "啟動", "B", "success-outline", lambda: start_group_opening("B")),
-    (8, 3, "啟動", "E", "success-outline", lambda: start_group_opening("E")),
-    (8, 4, "關閉", "A", "danger-outline", lambda: close_group_windows("A")),
-    (8, 5, "關閉", "B", "danger-outline", lambda: close_group_windows("B")),
-    (8, 6, "關閉", "E", "danger-outline", lambda: close_group_windows("E")),
-    (9, 1, "啟動", "C", "success-outline", lambda: start_group_opening("C")),
-    (9, 2, "啟動", "D", "success-outline", lambda: start_group_opening("D")),
-    (9, 3, "啟動", "F", "success-outline", lambda: start_group_opening("F")),
-    (9, 4, "關閉", "C", "danger-outline", lambda: close_group_windows("C")),
-    (9, 5, "關閉", "D", "danger-outline", lambda: close_group_windows("D")),
-    (9, 6, "關閉", "F", "danger-outline", lambda: close_group_windows("F")),
+    (8, 0, "啟動", "A", "success-outline", lambda: start_group_opening("A")),
+    (8, 1, "啟動", "B", "success-outline", lambda: start_group_opening("B")),
+    (8, 2, "啟動", "E", "success-outline", lambda: start_group_opening("E")),
+    (8, 3, "關閉", "A", "danger-outline", lambda: close_group_windows("A")),
+    (8, 4, "關閉", "B", "danger-outline", lambda: close_group_windows("B")),
+    (8, 5, "關閉", "E", "danger-outline", lambda: close_group_windows("E")),
+    (9, 0, "啟動", "C", "success-outline", lambda: start_group_opening("C")),
+    (9, 1, "啟動", "D", "success-outline", lambda: start_group_opening("D")),
+    (9, 2, "啟動", "F", "success-outline", lambda: start_group_opening("F")),
+    (9, 3, "關閉", "C", "danger-outline", lambda: close_group_windows("C")),
+    (9, 4, "關閉", "D", "danger-outline", lambda: close_group_windows("D")),
+    (9, 5, "關閉", "F", "danger-outline", lambda: close_group_windows("F")),
 ]
-
 for row, col, text, code, bootstyle, cmd in group_btn_grid:
     btn = tb.Button(
         btns_outer_frame,
@@ -652,64 +668,43 @@ for row, col, text, code, bootstyle, cmd in group_btn_grid:
         command=cmd,
         width=8
     )
-    btn.grid(row=row, column=col, padx=(4, 4), pady=(2, 2), sticky="nsew")
+    btn.grid(row=row-8, column=col, padx=(4, 4), pady=(2, 2), sticky="nsew")
     if text == "啟動":
         group_buttons[code] = btn
     else:
         close_buttons[code] = btn
 
-# 動態紀錄按鈕下方顯示「動態」「紀錄」兩行
-btns_outer_frame.grid_rowconfigure(8, weight=1)
-btns_outer_frame.grid_rowconfigure(9, weight=1)
-
-# --- 下方清單區塊（左：檔案名稱，右：視窗名稱） ---
+# --- row 10 檔案名稱/視窗名稱列表 ---
 bottom_frame = tb.Frame(frm)
-bottom_frame.grid(row=10, column=0, columnspan=6, sticky="ew", pady=(8, 2))
-bottom_frame.grid_columnconfigure(0, weight=0)  # 檔案列表固定寬度
-bottom_frame.grid_columnconfigure(1, weight=1)  # 視窗列表自動撐滿
+bottom_frame.grid(row=10, column=1, columnspan=2, sticky="ew", pady=(8, 2))
+bottom_frame.grid_columnconfigure(0, weight=1)  # 檔案列表
+bottom_frame.grid_columnconfigure(1, weight=1)  # 視窗列表
 bottom_frame.grid_rowconfigure(0, weight=1)
 
-# 左：檔案名稱列表（寬度與動態紀錄按鈕一致，建議 width=90，可依需求微調）
+# 左：檔案名稱列表
 file_list_outer = tb.Frame(bottom_frame, width=290)
 file_list_outer.grid(row=0, column=0, sticky="nsw")
-file_list_outer.grid_propagate(False)  # 固定寬度不被內容撐開
+file_list_outer.grid_propagate(False)
 file_list_outer.grid_rowconfigure(0, weight=1)
 file_list_outer.grid_columnconfigure(0, weight=1)
-
 file_list_canvas = tk.Canvas(file_list_outer, highlightthickness=0, height=120)
 file_list_canvas.grid(row=0, column=0, sticky="nsew")
-file_list_vscroll = tk.Scrollbar(file_list_outer, orient="vertical", command=file_list_canvas.yview)
-file_list_canvas.configure(yscrollcommand=file_list_vscroll.set)
-# 卷軸隱藏，不 grid 也不 pack
-
 file_list_inner_frame = tb.Frame(file_list_canvas)
 file_list_canvas.create_window((0, 0), window=file_list_inner_frame, anchor="nw")
 
-def _on_file_frame_configure(event):
-    file_list_canvas.configure(scrollregion=file_list_canvas.bbox("all"))
-file_list_inner_frame.bind("<Configure>", _on_file_frame_configure)
-
-# 右：視窗名稱列表（自動撐滿剩餘空間）
+# 右：視窗名稱列表
 window_list_outer = tb.Frame(bottom_frame)
 window_list_outer.grid(row=0, column=1, sticky="nsew")
 window_list_outer.grid_rowconfigure(0, weight=1)
 window_list_outer.grid_columnconfigure(0, weight=1)
-
 window_list_canvas = tk.Canvas(window_list_outer, highlightthickness=0)
 window_list_canvas.grid(row=0, column=0, sticky="nsew")
-window_list_hscroll = tk.Scrollbar(window_list_outer, orient="horizontal", command=window_list_canvas.xview)
-window_list_canvas.configure(xscrollcommand=window_list_hscroll.set)
-# 卷軸隱藏，不 grid 也不 pack
-
 window_list_inner_frame = tb.Frame(window_list_canvas)
 window_list_canvas.create_window((0, 0), window=window_list_inner_frame, anchor="nw")
 
-window_list_frames = []
-max_cols = 3
-for i in range(max_cols):
-    frame = tb.Frame(window_list_inner_frame)
-    frame.grid(row=0, column=i, sticky="nsew")
-    window_list_frames.append(frame)
+def _on_file_frame_configure(event):
+    file_list_canvas.configure(scrollregion=file_list_canvas.bbox("all"))
+file_list_inner_frame.bind("<Configure>", _on_file_frame_configure)
 
 def _on_window_frame_configure(event):
     window_list_canvas.configure(scrollregion=window_list_canvas.bbox("all"))
