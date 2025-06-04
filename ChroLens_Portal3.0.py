@@ -1,16 +1,6 @@
 ### ChroLens_Portal 2.0 
 ### 2025/05/26 By Lucienwooo
-### pyinstaller --onedir --noconsole --add-data "冥想貓貓.ico;." --icon=冥想貓貓.ico --hidden-import=win32timezone ChroLens_Portal2.0.py
-###### 分組視窗透過快捷鍵最上層顯示，半成品。
-# 目前頂層顯示，某些視窗還是無法正常顯示
-# 檔案只能開啟當前路徑，即便先前在別的路徑取得檔案名稱到分組
-# 仍然會只能開啟當前資料夾
 
-# row 0：頂部工具列（資料夾選擇、間隔秒數、分組名稱編輯、存檔按鈕）
-# row 1：分組置頂顯示切換區（顯示分組名稱與快捷鍵）
-# row 2：分組檔案列（15組分組欄位，分3欄顯示，每行3個分組下拉選單）
-# row 8~10：左側為動態紀錄顯示區，右側為啟動/關閉分組按鈕
-# row 10：右側為下方清單區塊（左：檔案名稱列表，右：視窗名稱列表）
 import os
 import time
 import win32gui
@@ -30,355 +20,20 @@ from tkinter import font as tkfont
 import functools
 import atexit
 
+# row 0：頂部工具列（資料夾選擇、間隔秒數、分組名稱編輯、存檔按鈕）
+# row 1：分組置頂顯示切換區（顯示分組名稱與快捷鍵）
+# row 2：分組檔案列（15組分組欄位，分3欄顯示，每行3個分組下拉選單）
+# row 8：動態日誌、啟動按鈕..、關閉按鈕..
+# row 9：動態日誌、啟動按鈕..、關閉按鈕..
+# row 10：動態日誌、檔案名稱列表、視窗名稱列表
+
 LAST_PATH_FILE = "last_path.txt"
 SETTINGS_FILE = "chrolens_portal.json"
 
 def resource_path(relative_path):
-    """取得資源檔案的絕對路徑，支援 PyInstaller 打包後的路徑"""
     if hasattr(sys, '_MEIPASS'):
         return os.path.join(sys._MEIPASS, relative_path)
     return os.path.join(os.path.abspath("."), relative_path)
-
-def open_lnk_target(lnk_path):
-    pythoncom.CoInitialize()
-    shell_link = pythoncom.CoCreateInstance(
-        shell.CLSID_ShellLink, None,
-        pythoncom.CLSCTX_INPROC_SERVER, shell.IID_IShellLink
-    )
-    persist_file = shell_link.QueryInterface(pythoncom.IID_IPersistFile)
-    persist_file.Load(lnk_path)
-    target_path, _ = shell_link.GetPath(shell.SLGP_UNCPRIORITY)
-    arguments = shell_link.GetArguments()
-    return target_path, arguments
-
-def open_files_in_folder(folder_path, interval=4, log_func=None):
-    selected_files = []
-    for var, entry in checkbox_vars_entries:
-        if var.get():
-            selected_files.append(entry.get())
-    files = selected_files if selected_files else [f for f in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, f))]
-    files.sort()
-    for file in files:
-        file_path = os.path.join(folder_path, file)
-        try:
-            if file.lower().endswith('.lnk'):
-                target, args = open_lnk_target(file_path)
-                if target and os.path.exists(target):
-                    if log_func:
-                        log_func(f"Opening shortcut target: {target} {args}")
-                    subprocess.Popen(
-                        f'"{target}" {args}',
-                        shell=True,
-                        creationflags=subprocess.CREATE_NO_WINDOW
-                    )
-                else:
-                    if log_func:
-                        log_func(f"無法解析捷徑或目標不存在: {file_path}")
-            else:
-                if log_func:
-                    log_func(f"Opening: {file_path}")
-                os.startfile(file_path)
-        except Exception as e:
-            if log_func:
-                log_func(f"無法開啟: {file_path}，錯誤：{e}")
-        time.sleep(interval)
-
-def open_files(folder_path, file_names=None, interval=4, log_func=None):
-    if file_names is None:
-        files = [f for f in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, f))]
-    else:
-        files = [f for f in file_names if f]
-    files.sort()
-    for file in files:
-        file_path = os.path.join(folder_path, file)
-        try:
-            if file.lower().endswith('.lnk'):
-                target, args = open_lnk_target(file_path)
-                if target and os.path.exists(target):
-                    if log_func:
-                        log_func(f"Opening shortcut target: {target} {args}")
-                    subprocess.Popen(
-                        f'"{target}" {args}',
-                        shell=True,
-                        creationflags=subprocess.CREATE_NO_WINDOW
-                    )
-                else:
-                    if log_func:
-                        log_func(f"無法解析捷徑或目標不存在: {file_path}")
-            else:
-                if log_func:
-                    log_func(f"Opening: {file_path}")
-                os.startfile(file_path)
-        except Exception as e:
-            if log_func:
-                log_func(f"無法開啟: {file_path}，錯誤：{e}")
-        time.sleep(interval)
-
-def start_opening():
-    folder = folder_var.get()
-    try:
-        interval = float(interval_var.get())
-    except ValueError:
-        log("請輸入正確的間隔秒數")
-        return
-    if not os.path.isdir(folder):
-        log("請選擇正確的資料夾")
-        return
-    log(f"開始開啟 {folder} 內的檔案，每 {interval} 秒一個")
-    threading.Thread(target=open_files_in_folder, args=(folder, interval, log), daemon=True).start()
-
-def choose_folder():
-    folder = filedialog.askdirectory()
-    if folder:
-        folder_var.set(folder)
-        save_last_path(folder)
-        show_files_in_folder(folder)
-        update_file_list()
-        update_window_list()  # 新增：刷新右側視窗清單
-
-def show_files_in_folder(folder):
-    pass
-
-def show_log_window():
-    if hasattr(app, 'log_win') and app.log_win.winfo_exists():
-        app.log_win.deiconify()
-        return
-    log_win = tk.Toplevel(app)
-    log_win.title("動態紀錄")
-    log_win.geometry(f"400x600+{app.winfo_rootx()-400}+{app.winfo_rooty()}")
-    log_win.resizable(True, True)
-    log_win.attributes('-topmost', True)
-    try:
-        ico_path = resource_path("冥想貓貓.ico")
-        log_win.iconbitmap(ico_path)
-    except Exception as e:
-        print(f"無法設定 log 視窗 icon: {e}")
-    app.log_win = log_win
-
-    def start_move(event):
-        log_win._drag_start_x = event.x
-        log_win._drag_start_y = event.y
-    def do_move(event):
-        x = log_win.winfo_x() + event.x - log_win._drag_start_x
-        y = log_win.winfo_y() + event.y - log_win._drag_start_y
-        log_win.geometry(f"+{x}+{y}")
-    log_win.bind("<Button-1>", start_move)
-    log_win.bind("<B1-Motion>", do_move)
-
-    log_text = tb.Text(log_win, height=30, width=60, state="normal")
-    log_text.pack(fill="both", expand=True)
-    app.log_text = log_text
-
-    # 顯示所有歷史紀錄
-    log_text.config(state="normal")
-    log_text.delete("1.0", "end")
-    for line in log_history:
-        log_text.insert("end", line + "\n")
-    log_text.see("end")
-    log_text.config(state="disabled")
-
-log_history = []
-
-# 新增：啟動時自動顯示歷史紀錄
-if log_history:
-    log_text.config(state="normal")
-    for line in log_history:
-        log_text.insert("end", line + "\n")
-    log_text.see("end")
-    log_text.config(state="disabled")
-
-def toggle_log():
-    if hasattr(app, 'log_win') and app.log_win.winfo_exists():
-        if app.log_win.state() == 'normal':
-            app.log_win.withdraw()
-        else:
-            app.log_win.deiconify()
-    else:
-        show_log_window()
-
-def open_files_in_folder(folder_path, interval=4, log_func=None):
-    selected_files = []
-    for var, entry in checkbox_vars_entries:
-        if var.get():
-            selected_files.append(entry.get())
-    files = selected_files if selected_files else [f for f in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, f))]
-    files.sort()
-    for file in files:
-        file_path = os.path.join(folder_path, file)
-        try:
-            if file.lower().endswith('.lnk'):
-                target, args = open_lnk_target(file_path)
-                if target and os.path.exists(target):
-                    if log_func:
-                        log_func(f"Opening shortcut target: {target} {args}")
-                    subprocess.Popen(
-                        f'"{target}" {args}',
-                        shell=True,
-                        creationflags=subprocess.CREATE_NO_WINDOW
-                    )
-                else:
-                    if log_func:
-                        log_func(f"無法解析捷徑或目標不存在: {file_path}")
-            else:
-                if log_func:
-                    log_func(f"Opening: {file_path}")
-                os.startfile(file_path)
-        except Exception as e:
-            if log_func:
-                log_func(f"無法開啟: {file_path}，錯誤：{e}")
-        time.sleep(interval)
-
-def open_files(folder_path, file_names=None, interval=4, log_func=None):
-    if file_names is None:
-        files = [f for f in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, f))]
-    else:
-        files = [f for f in file_names if f]
-    files.sort()
-    for file in files:
-        file_path = os.path.join(folder_path, file)
-        try:
-            if file.lower().endswith('.lnk'):
-                target, args = open_lnk_target(file_path)
-                if target and os.path.exists(target):
-                    if log_func:
-                        log_func(f"Opening shortcut target: {target} {args}")
-                    subprocess.Popen(
-                        f'"{target}" {args}',
-                        shell=True,
-                        creationflags=subprocess.CREATE_NO_WINDOW
-                    )
-                else:
-                    if log_func:
-                        log_func(f"無法解析捷徑或目標不存在: {file_path}")
-            else:
-                if log_func:
-                    log_func(f"Opening: {file_path}")
-                os.startfile(file_path)
-        except Exception as e:
-            if log_func:
-                log_func(f"無法開啟: {file_path}，錯誤：{e}")
-        time.sleep(interval)
-
-def start_opening():
-    folder = folder_var.get()
-    try:
-        interval = float(interval_var.get())
-    except ValueError:
-        log("請輸入正確的間隔秒數")
-        return
-    if not os.path.isdir(folder):
-        log("請選擇正確的資料夾")
-        return
-    log(f"開始開啟 {folder} 內的檔案，每 {interval} 秒一個")
-    threading.Thread(target=open_files_in_folder, args=(folder, interval, log), daemon=True).start()
-
-def choose_folder():
-    folder = filedialog.askdirectory()
-    if folder:
-        folder_var.set(folder)
-        save_last_path(folder)
-        show_files_in_folder(folder)
-        update_file_list()
-        update_window_list()  # 新增：刷新右側視窗清單
-
-def show_files_in_folder(folder):
-    pass
-
-log_history = []
-
-def log(msg):
-    timestamp = time.strftime("%H:%M:%S")
-    full_msg = f"[{timestamp}] {msg}"
-    log_history.append(full_msg)
-    # 直接顯示在 log_text
-    if log_text.winfo_exists():
-        log_text.config(state="normal")
-        log_text.insert("end", full_msg + "\n")
-        log_text.see("end")
-        log_text.config(state="disabled")
-
-def show_log_window():
-    if hasattr(app, 'log_win') and app.log_win.winfo_exists():
-        app.log_win.deiconify()
-        return
-    log_win = tk.Toplevel(app)
-    log_win.title("動態紀錄")
-    log_win.geometry(f"400x600+{app.winfo_rootx()-400}+{app.winfo_rooty()}")
-    log_win.resizable(True, True)
-    log_win.attributes('-topmost', True)
-    # 設定 icon
-    try:
-        ico_path = resource_path("冥想貓貓.ico")
-        log_win.iconbitmap(ico_path)
-    except Exception as e:
-        print(f"無法設定 log 視窗 icon: {e}")
-    app.log_win = log_win
-
-    def start_move(event):
-        log_win._drag_start_x = event.x
-        log_win._drag_start_y = event.y
-    def do_move(event):
-        x = log_win.winfo_x() + event.x - log_win._drag_start_x
-        y = log_win.winfo_y() + event.y - log_win._drag_start_y
-        log_win.geometry(f"+{x}+{y}")
-    log_win.bind("<Button-1>", start_move)
-    log_win.bind("<B1-Motion>", do_move)
-
-    log_text = tb.Text(log_win, height=30, width=60, state="normal")
-    log_text.pack(fill="both", expand=True)
-    app.log_text = log_text
-
-    # 顯示所有歷史紀錄
-    for line in log_history:
-        log_text.insert("end", line + "\n")
-    log_text.see("end")
-    log_text.config(state="disabled")
-
-# 新增：啟動時自動顯示歷史紀錄
-if log_history:
-    log_text.config(state="normal")
-    for line in log_history:
-        log_text.insert("end", line + "\n")
-    log_text.see("end")
-    log_text.config(state="disabled")
-
-def toggle_log():
-    if hasattr(app, 'log_win') and app.log_win.winfo_exists():
-        if app.log_win.state() == 'normal':
-            app.log_win.withdraw()
-        else:
-            app.log_win.deiconify()
-    else:
-        show_log_window()
-
-log_history = []
-
-def log(msg):
-    timestamp = time.strftime("%H:%M:%S")
-    full_msg = f"[{timestamp}] {msg}"
-    log_history.append(full_msg)
-    # 無論日誌視窗是否顯示，都更新內容
-    if 'log_text' in globals() and log_text.winfo_exists():
-        log_text.config(state="normal")
-        log_text.insert("end", full_msg + "\n")
-        log_text.see("end")
-        log_text.config(state="disabled")
-
-def load_last_path():
-    if os.path.exists(LAST_PATH_FILE):
-        with open(LAST_PATH_FILE, "r", encoding="utf-8") as f:
-            path = f.read().strip()
-            if os.path.isdir(path):
-                return path
-    return os.path.dirname(os.path.abspath(__file__))
-
-def save_last_path(path):
-    with open(LAST_PATH_FILE, "w", encoding="utf-8") as f:
-        f.write(path)
-
-# --- 主 Frame ---
-frm = tb.Frame(app, padding=2)
-frm.pack(fill="both", expand=True)
 
 # === 介面區塊 ===
 app = tb.Window(themename="darkly")
@@ -389,12 +44,12 @@ try:
 except Exception as e:
     print(f"無法設定 icon: {e}")
 
-# 統一字體
-default_font = tkfont.Font(family="Microsoft JhengHei", size=12)
-app.option_add("*Font", default_font)
+# --- 主 Frame ---
+frm = tb.Frame(app, padding=2)
+frm.pack(fill="both", expand=True)
 
 # --- row 0：頂部工具列 ---
-top_row_frame = tb.Frame(app, padding=2)
+top_row_frame = tb.Frame(frm, padding=2)
 top_row_frame.grid(row=0, column=0, columnspan=8, sticky="ew", pady=(2, 2))
 top_row_frame.grid_columnconfigure(0, weight=0)
 top_row_frame.grid_columnconfigure(1, weight=0)
@@ -403,10 +58,16 @@ top_row_frame.grid_columnconfigure(2, weight=0)
 folder_var = tb.StringVar(value="")
 interval_var = tb.StringVar(value="4")
 
+def choose_folder():
+    folder_selected = filedialog.askdirectory()
+    if folder_selected:
+        folder_var.set(folder_selected)
+        update_file_list()  # 新增：選擇資料夾後即時刷新檔案列表
+
 folder_frame = tb.Frame(top_row_frame, padding=(2,2))
 folder_frame.grid(row=0, column=0, sticky="w", padx=(0, 4))
 tb.Entry(folder_frame, textvariable=folder_var, width=38).grid(row=0, column=0, padx=(2,2), sticky="ew")
-tb.Button(folder_frame, text="選擇開啟路徑", command=choose_folder, bootstyle=SECONDARY).grid(row=0, column=1, padx=(2,0), sticky="ew")
+tb.Button(folder_frame, text="選擇開啟路徑", command=lambda: choose_folder(), bootstyle=SECONDARY).grid(row=0, column=1, padx=(2,0), sticky="ew")
 
 interval_frame = tb.Frame(top_row_frame, padding=(2,2))
 interval_frame.grid(row=0, column=1, sticky="w", padx=(0, 4))
@@ -420,21 +81,23 @@ def manual_save():
 save_btn = tb.Button(top_row_frame, text="存檔", command=manual_save, bootstyle="info")
 save_btn.grid(row=0, column=5, padx=(8,2), sticky="e")
 
-# === 新版：快捷鍵設定（僅允許 ALT+任意鍵 或 CTRL+任意鍵）===
+# --- 分組與快捷鍵 ---
+group_codes = ["A", "B", "C", "D", "E", "F"]
+group_display_names = {c: tk.StringVar(value=c) for c in group_codes}
 default_hotkeys = ["Alt+1", "Alt+2", "Alt+3", "Alt+4", "Alt+Q", "Alt+W"]
 group_hotkeys = [tk.StringVar(value=default_hotkeys[i]) for i in range(6)]
+group_buttons = {}
+close_buttons = {}
 
 def format_hotkey(event):
-    # 只允許 ALT+任意 或 CTRL+任意
     keys = []
     if event.state & 0x0004:  # Ctrl
         keys.append("Ctrl")
     if event.state & 0x0008:  # Alt
         keys.append("Alt")
     if not keys:
-        return ""  # 沒有 Ctrl/Alt 不允許
+        return ""
     key = event.keysym
-    # 過濾掉純修飾鍵
     if key in ("Shift_L", "Shift_R", "Control_L", "Control_R", "Alt_L", "Alt_R"):
         return ""
     if key.startswith("KP_"):
@@ -451,19 +114,15 @@ def on_hotkey_entry_key(event, idx):
         group_hotkeys[idx].set(hotkey)
     return "break"
 
-# --- 第二排：啟動A/B/C/D顯示快捷鍵（加框） ---
+# --- row 1：分組置頂顯示切換區 ---
 show_label_frames = []
 second_row_frame = tb.Frame(frm)
 second_row_frame.grid(row=1, column=0, columnspan=8, sticky="ew")
-for i in range(7):  # 0~6 共7格
+for i in range(7):
     second_row_frame.grid_columnconfigure(i, weight=1)
-
-show_label_font = tkfont.Font(family="Microsoft JhengHei", size=12)  # 統一字體大小
-
-# 新增最左邊的說明文字
+show_label_font = tkfont.Font(family="Microsoft JhengHei", size=12)
 desc_label = tb.Label(second_row_frame, text="置頂切換", width=12, anchor="center", font=show_label_font)
 desc_label.grid(row=0, column=0, padx=2, pady=2, sticky="ew")
-
 for idx, code in enumerate(group_codes):
     frame = tb.Frame(second_row_frame, borderwidth=2, relief="groove")
     frame.grid(row=0, column=idx+1, padx=2, pady=2, sticky="ew")
@@ -480,146 +139,56 @@ for idx, code in enumerate(group_codes):
 def update_show_labels(*args):
     for idx, code in enumerate(group_codes):
         show_label_frames[idx][0].config(text=f"{group_display_names[code].get()} 組")  
-
 for c in group_codes:
     group_display_names[c].trace_add("write", update_show_labels)
 
-# === 新版：全域快捷鍵觸發（僅 ALT+任意 或 CTRL+任意）===
-def is_entry_focused():
-    widget = app.focus_get()
-    return isinstance(widget, (tk.Entry, tb.Entry, tk.Text, tb.Combobox))
-
-def global_hotkey_handler(event):
-    if is_entry_focused():
-        return  # 有輸入框聚焦時不觸發
-    pressed = format_hotkey(event)
-    for idx, code in enumerate(group_codes):
-        if pressed and pressed == group_hotkeys[idx].get():
-            set_group_windows_topmost(code)
-            log(f"分組 {group_display_names[code].get()} 置頂顯示")
-            break
-
-app.bind_all("<Key>", global_hotkey_handler, add="+")
-
-group_select_code = tk.StringVar(value=group_codes[0])
+# --- row 2：分組檔案列 ---
+group_frames = []
+for col in range(3):
+    group_frame = tb.Frame(frm, borderwidth=1, relief="solid", padding=2)
+    group_frame.grid(row=2, column=col, padx=2, pady=2, sticky="nsew")
+    frm.grid_columnconfigure(col, weight=1)
+    group_frames.append(group_frame)
+num_font = tkfont.Font(family="Microsoft JhengHei", size=12, weight="bold")
+checkbox_vars_entries = []
+for i in range(12):  # 12行
+    entry = tb.Entry(group_frames[i // 4], width=14, state="readonly")
+    group_var1 = tk.StringVar(value="")
+    group_var2 = tk.StringVar(value="")
+    group_var3 = tk.StringVar(value="")
+    group_var4 = tk.StringVar(value="")
+    group_combo1 = tb.Combobox(
+        group_frames[i // 4], textvariable=group_var1,
+        values=[""] + [group_display_names[c].get() for c in group_codes], width=4, state="readonly"
+    )
+    group_combo2 = tb.Combobox(
+        group_frames[i // 4], textvariable=group_var2,
+        values=[""] + [group_display_names[c].get() for c in group_codes], width=4, state="readonly"
+    )
+    group_combo3 = tb.Combobox(
+        group_frames[i // 4], textvariable=group_var3,
+        values=[""] + [group_display_names[c].get() for c in group_codes], width=4, state="readonly"
+    )
+    group_combo4 = tb.Combobox(
+        group_frames[i // 4], textvariable=group_var4,
+        values=[""] + [group_display_names[c].get() for c in group_codes], width=4, state="readonly"
+    )
+    row = i % 4
+    num_label = tb.Label(group_frames[i // 4], text=str(i+1), width=2)
+    num_label['font'] = num_font
+    num_label.grid(row=row, column=0, sticky="w", padx=0)
+    entry.grid(row=row, column=1, padx=0, pady=1)
+    group_combo1.grid(row=row, column=2, padx=0, pady=1)
+    group_combo2.grid(row=row, column=3, padx=0, pady=1)
+    group_combo3.grid(row=row, column=4, padx=0, pady=1)
+    group_combo4.grid(row=row, column=5, padx=0, pady=1)
+    checkbox_vars_entries.append((entry, group_var1, group_var2, group_var3, group_var4, group_combo1, group_combo2, group_combo3, group_combo4))
 
 def get_group_code_by_display_name(display_name):
     for code in group_codes:
         if group_display_names[code].get() == display_name:
             return code
     return None
-
-def set_group_entry_placeholder():
-    if not group_rename_var.get():
-        group_entry.delete(0, tk.END)
-        group_entry.insert(0, "修改分組名稱")
-        group_entry.config(foreground="gray")
-
-def clear_group_entry_placeholder(event=None):
-    if group_entry.get() == "修改分組名稱":
-        group_entry.delete(0, tk.END)
-        group_entry.config(foreground="black")
-
-def on_group_entry_focus_out(event=None):
-    if not group_entry.get():
-        set_group_entry_placeholder()
-
-def update_group_name(*args):
-    code = group_select_code.get()
-    new_name = group_rename_var.get().strip()
-    default_names = {c: c for c in group_codes}
-    if not new_name or new_name == "修改分組名稱":
-        group_display_names[code].set(default_names[code])
-    else:
-        group_display_names[code].set(new_name)
-    for c in group_codes:
-        group_buttons[c]['text'] = f"啟動 {group_display_names[c].get()}"
-        close_buttons[c]['text'] = f"關閉 {group_display_names[c].get()}"
-    # 重新設定所有下拉選單的 values 與顯示值
-    for i in range(15):
-        combo1 = checkbox_vars_entries[i][3]
-        combo2 = checkbox_vars_entries[i][4]
-        # 取得目前選取的顯示名稱
-        val1 = combo1.get()
-        val2 = combo2.get()
-        combo1['values'] = [""] + [group_display_names[c].get() for c in group_codes]
-        combo2['values'] = [""] + [group_display_names[c].get() for c in group_codes]
-        # 若目前選取的顯示名稱有變動，則同步顯示
-        if val1 and val1 not in combo1['values']:
-            # 依 group_var1 的 group_code 重新設值
-            code1 = get_group_code_by_display_name(val1)
-            if code1:
-                combo1.set(group_display_names[code1].get())
-        if val2 and val2 not in combo2['values']:
-            code2 = get_group_code_by_display_name(val2)
-            if code2:
-                combo2.set(group_display_names[code2].get())
-    group_combo['values'] = [group_display_names[c].get() for c in group_codes]
-    group_select_code.set(code)
-    group_rename_var.set("")
-    set_group_entry_placeholder()
-
-group_combo = tb.Combobox(
-    top_row_frame, textvariable=group_select_code,
-    values=[group_display_names[c].get() for c in group_codes], width=4, state="readonly"
-)
-group_combo.grid(row=0, column=3, padx=(8,2))
-
-group_rename_var = tk.StringVar()
-group_entry = tb.Entry(top_row_frame, textvariable=group_rename_var, width=14)
-group_entry.grid(row=0, column=4, padx=(2,0))
-group_entry.bind("<FocusIn>", clear_group_entry_placeholder)
-group_entry.bind("<FocusOut>", on_group_entry_focus_out)
-group_entry.bind("<Return>", lambda e: update_group_name())
-set_group_entry_placeholder()
-
-def on_group_combo_selected(event=None):
-    display_name = group_combo.get()
-    code = get_group_code_by_display_name(display_name)
-    if code:
-        group_select_code.set(code)
-        group_combo.set(group_display_names[code].get())
-
-group_combo.bind("<<ComboboxSelected>>", on_group_combo_selected)
-
-group_frames = []
-for col in range(3):
-    group_frame = tb.Frame(frm, borderwidth=1, relief="solid", padding=2)
-    group_frame.grid(row=2, column=col, padx=2, pady=2, sticky="n")
-    group_frames.append(group_frame)
-
-# --- 分組檔案列（數字放大、粗體、分組更緊湊） ---
-num_font = tkfont.Font(family="Microsoft JhengHei", size=12, weight="bold")  # 放大一級且粗體
-
-checkbox_vars_entries = []
-for i in range(15):
-    entry = tb.Entry(group_frames[i // 5], width=14, state="readonly")
-    group_var1 = tk.StringVar(value="")
-    group_var2 = tk.StringVar(value="")
-    group_var3 = tk.StringVar(value="")  # 新增第三個分組選單
-    group_combo1 = tb.Combobox(
-        group_frames[i // 5], textvariable=group_var1,
-        values=[""] + [group_display_names[c].get() for c in group_codes], width=4, state="readonly"
-    )
-    group_combo2 = tb.Combobox(
-        group_frames[i // 5], textvariable=group_var2,
-        values=[""] + [group_display_names[c].get() for c in group_codes], width=4, state="readonly"
-    )
-    group_combo3 = tb.Combobox(
-        group_frames[i // 5], textvariable=group_var3,
-        values=[""] + [group_display_names[c].get() for c in group_codes], width=4, state="readonly"
-    )
-    row = i % 5
-    # 數字標籤：放大、粗體，無多餘空格
-    num_label = tb.Label(group_frames[i // 5], text=str(i+1), width=2)
-    num_label['font'] = num_font
-    num_label.grid(row=row, column=0, sticky="w", padx=0)
-    # 其餘欄位緊湊排列，無多餘 padx
-    entry.grid(row=row, column=1, padx=0, pady=1)
-    group_combo1.grid(row=row, column=2, padx=0, pady=1)
-    group_combo2.grid(row=row, column=3, padx=0, pady=1)
-    group_combo3.grid(row=row, column=4, padx=0, pady=1)  # 新增第三個下拉選單
-    checkbox_vars_entries.append((entry, group_var1, group_var2, group_var3, group_combo1, group_combo2, group_combo3))
 
 def get_group_files(group_code):
     files = []
@@ -633,7 +202,7 @@ def get_group_files(group_code):
     return files
 
 # --- row 8~10 動態日誌區塊 ---
-log_text = tb.Text(frm, height=18, width=18, state="disabled", wrap="word", font=default_font)
+log_text = tb.Text(frm, height=18, width=18, state="disabled", wrap="word", font=tkfont.Font(family="Microsoft JhengHei", size=10))
 log_text.grid(row=8, column=0, rowspan=3, sticky="nsew", padx=(0, 8), pady=(0, 0))
 frm.grid_rowconfigure(8, weight=1)
 frm.grid_rowconfigure(9, weight=1)
@@ -645,7 +214,6 @@ btns_outer_frame = tb.Frame(frm)
 btns_outer_frame.grid(row=8, column=1, rowspan=2, columnspan=6, sticky="ew", padx=(0, 4), pady=(8, 4))
 for i in range(6):
     btns_outer_frame.grid_columnconfigure(i, weight=1)
-
 group_btn_grid = [
     (8, 0, "啟動", "A", "success-outline", lambda: start_group_opening("A")),
     (8, 1, "啟動", "B", "success-outline", lambda: start_group_opening("B")),
@@ -677,11 +245,10 @@ for row, col, text, code, bootstyle, cmd in group_btn_grid:
 # --- row 10 檔案名稱/視窗名稱列表 ---
 bottom_frame = tb.Frame(frm)
 bottom_frame.grid(row=10, column=1, columnspan=2, sticky="ew", pady=(8, 2))
-bottom_frame.grid_columnconfigure(0, weight=1)  # 檔案列表
-bottom_frame.grid_columnconfigure(1, weight=1)  # 視窗列表
+bottom_frame.grid_columnconfigure(0, weight=1)
+bottom_frame.grid_columnconfigure(1, weight=1)
 bottom_frame.grid_rowconfigure(0, weight=1)
 
-# 左：檔案名稱列表
 file_list_outer = tb.Frame(bottom_frame, width=290)
 file_list_outer.grid(row=0, column=0, sticky="nsw")
 file_list_outer.grid_propagate(False)
@@ -692,7 +259,6 @@ file_list_canvas.grid(row=0, column=0, sticky="nsew")
 file_list_inner_frame = tb.Frame(file_list_canvas)
 file_list_canvas.create_window((0, 0), window=file_list_inner_frame, anchor="nw")
 
-# 右：視窗名稱列表
 window_list_outer = tb.Frame(bottom_frame)
 window_list_outer.grid(row=0, column=1, sticky="nsew")
 window_list_outer.grid_rowconfigure(0, weight=1)
@@ -732,27 +298,27 @@ def update_file_list():
     files = [f for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))]
     files.sort()
     for row, fname in enumerate(files):
-        lbl = tb.Label(file_list_inner_frame, text=fname, anchor="w", width=15, font=default_font)
+        lbl = tb.Label(file_list_inner_frame, text=fname, anchor="w", width=15, font=tkfont.Font(family="Microsoft JhengHei", size=10))
         lbl.grid(row=row, column=0, sticky="ew", padx=2, pady=1)
         lbl.bind("<ButtonPress-1>", lambda e, t=fname: on_label_drag_start(e, t))
     file_list_inner_frame.update_idletasks()
     file_list_canvas.config(scrollregion=file_list_canvas.bbox("all"))
 
 def update_window_list():
-    for frame in window_list_frames:
-        for widget in frame.winfo_children():
-            widget.destroy()
+    # 清空現有視窗列表
+    for widget in window_list_inner_frame.winfo_children():
+        widget.destroy()
     titles = get_taskbar_window_titles()
-    max_rows = 5
-    max_cols = 3
-    for col in range(max_cols):
-        for row in range(max_rows):
-            idx = col * max_rows + row
-            if idx < len(titles):
-                title = titles[idx]
-                lbl = tb.Label(window_list_frames[col], text=title, anchor="w", width=22, font=default_font)
-                lbl.grid(row=row, column=0, sticky="ew", padx=2, pady=1)
-                lbl.bind("<ButtonPress-1>", lambda e, t=title: on_label_drag_start(e, t))
+    col_count = (len(titles) + 4) // 5  # 每欄5個，計算需要幾欄
+    for col in range(col_count):
+        for row in range(5):
+            idx = col * 5 + row
+            if idx >= len(titles):
+                break
+            title = titles[idx]
+            lbl = tb.Label(window_list_inner_frame, text=title, anchor="w", width=22, font=tkfont.Font(family="Microsoft JhengHei", size=10))
+            lbl.grid(row=row, column=col, sticky="ew", padx=2, pady=1)
+            lbl.bind("<ButtonPress-1>", lambda e, t=title: on_label_drag_start(e, t))
     window_list_inner_frame.update_idletasks()
     window_list_canvas.config(scrollregion=window_list_canvas.bbox("all"))
 
@@ -778,7 +344,7 @@ def on_label_drag_start(event, title):
     drag_label_popup["win"] = tk.Toplevel(app)
     drag_label_popup["win"].overrideredirect(True)
     drag_label_popup["win"].attributes("-topmost", True)
-    label = tb.Label(drag_label_popup["win"], text=title, background="#222", foreground="#fff", font=default_font)
+    label = tb.Label(drag_label_popup["win"], text=title, background="#222", foreground="#fff", font=tkfont.Font(family="Microsoft JhengHei", size=10))
     label.pack()
     def follow_mouse(ev):
         x = ev.x_root + 10
@@ -1081,5 +647,17 @@ def auto_refresh_window_list():
 
 # 啟動時呼叫一次
 auto_refresh_window_list()
+
+log_history = []
+
+def log(msg):
+    timestamp = time.strftime("%H:%M:%S")
+    full_msg = f"[{timestamp}] {msg}"
+    log_history.append(full_msg)
+    if log_text.winfo_exists():
+        log_text.config(state="normal")
+        log_text.insert("end", full_msg + "\n")
+        log_text.see("end")
+        log_text.config(state="disabled")
 
 app.mainloop()
