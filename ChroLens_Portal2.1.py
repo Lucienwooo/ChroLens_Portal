@@ -37,16 +37,27 @@ def resource_path(relative_path):
 
 # === 介面區塊 ===
 app = tb.Window(themename="darkly")
-app.title("ChroLens_Portal 2.0.0")
+app.title("ChroLens_Portal 2.1")
 try:
     ico_path = resource_path("冥想貓貓.ico")
     app.iconbitmap(ico_path)
 except Exception as e:
     print(f"無法設定 icon: {e}")
 
+# 主視窗寬度
+app.geometry("1200x720")  # 依需求調整
+
 # --- 主 Frame ---
 frm = tb.Frame(app, padding=2)
 frm.pack(fill="both", expand=True)
+
+# --- 分組與快捷鍵 ---
+group_codes = ["A", "B", "C", "D", "E", "F"]
+group_display_names = {c: tk.StringVar(value=c) for c in group_codes}
+default_hotkeys = ["Alt+1", "Alt+2", "Alt+3", "Alt+4", "Alt+Q", "Alt+W"]
+group_hotkeys = [tk.StringVar(value=default_hotkeys[i]) for i in range(6)]
+group_buttons = {}
+close_buttons = {}
 
 # --- row 0：頂部工具列 ---
 top_row_frame = tb.Frame(frm, padding=2)
@@ -66,53 +77,52 @@ def choose_folder():
 
 folder_frame = tb.Frame(top_row_frame, padding=(2,2))
 folder_frame.grid(row=0, column=0, sticky="w", padx=(0, 4))
-tb.Entry(folder_frame, textvariable=folder_var, width=38).grid(row=0, column=0, padx=(2,2), sticky="ew")
+tb.Entry(folder_frame, textvariable=folder_var, width=25).grid(row=0, column=0, padx=(2,2), sticky="ew")
 tb.Button(folder_frame, text="選擇開啟路徑", command=lambda: choose_folder(), bootstyle=SECONDARY).grid(row=0, column=1, padx=(2,0), sticky="ew")
 
 interval_frame = tb.Frame(top_row_frame, padding=(2,2))
 interval_frame.grid(row=0, column=1, sticky="w", padx=(0, 4))
 tb.Label(interval_frame, text="間隔秒數:").grid(row=0, column=0, sticky="w")
-tb.Entry(interval_frame, textvariable=interval_var, width=5).grid(row=0, column=1, padx=(2,0), sticky="w")
+tb.Entry(interval_frame, textvariable=interval_var, width=3).grid(row=0, column=1, padx=(2,0), sticky="w")
 
 # 新增「存檔」按鈕
 def manual_save():
     save_settings()
     log("已手動儲存設定檔")
-save_btn = tb.Button(top_row_frame, text="存檔", command=manual_save, bootstyle="info")
+save_btn = tb.Button(top_row_frame, text="存檔", command=manual_save, bootstyle="info", width=5)
 save_btn.grid(row=0, column=5, padx=(8,2), sticky="e")
 
-# --- 分組與快捷鍵 ---
-group_codes = ["A", "B", "C", "D", "E", "F"]
-group_display_names = {c: tk.StringVar(value=c) for c in group_codes}
-default_hotkeys = ["Alt+1", "Alt+2", "Alt+3", "Alt+4", "Alt+Q", "Alt+W"]
-group_hotkeys = [tk.StringVar(value=default_hotkeys[i]) for i in range(6)]
-group_buttons = {}
-close_buttons = {}
+# --- 新增：分組名稱修改區 ---
+group_name_edit_var = tk.StringVar()
+group_name_edit_combo_var = tk.StringVar(value=group_codes[0])
 
-def format_hotkey(event):
-    keys = []
-    if event.state & 0x0004:  # Ctrl
-        keys.append("Ctrl")
-    if event.state & 0x0008:  # Alt
-        keys.append("Alt")
-    if not keys:
-        return ""
-    key = event.keysym
-    if key in ("Shift_L", "Shift_R", "Control_L", "Control_R", "Alt_L", "Alt_R"):
-        return ""
-    if key.startswith("KP_"):
-        key = key.replace("KP_", "Num")
-    keys.append(key.capitalize())
-    return "+".join(keys)
+def on_group_name_combo_change(event=None):
+    code = group_name_edit_combo_var.get()
+    group_name_edit_var.set(group_display_names[code].get())
 
-def on_hotkey_entry_key(event, idx):
-    if event.keysym in ("Escape", "BackSpace"):
-        group_hotkeys[idx].set(default_hotkeys[idx])
-        return "break"
-    hotkey = format_hotkey(event)
-    if hotkey:
-        group_hotkeys[idx].set(hotkey)
-    return "break"
+def on_group_name_edit_submit(event=None):
+    code = group_name_edit_combo_var.get()
+    new_name = group_name_edit_var.get().strip()
+    if not new_name:
+        # 恢復預設
+        group_display_names[code].set(code)
+    else:
+        group_display_names[code].set(new_name)
+
+group_name_edit_combo = tb.Combobox(
+    top_row_frame, values=group_codes, textvariable=group_name_edit_combo_var, width=3, state="readonly"
+)
+group_name_edit_entry = tb.Entry(
+    top_row_frame, textvariable=group_name_edit_var, width=12
+)
+group_name_edit_combo.grid(row=0, column=3, padx=(8,2), sticky="w")
+group_name_edit_entry.grid(row=0, column=4, padx=(2,2), sticky="w")
+save_btn.grid(row=0, column=5, padx=(8,2), sticky="e")
+group_name_edit_combo.bind("<<ComboboxSelected>>", on_group_name_combo_change)
+group_name_edit_entry.bind("<FocusIn>", lambda e: group_name_edit_entry.delete(0, tk.END) if group_name_edit_entry.get() == "修改分組名稱" else None)
+group_name_edit_entry.bind("<Return>", on_group_name_edit_submit)
+group_name_edit_entry.bind("<FocusOut>", on_group_name_edit_submit)
+on_group_name_combo_change()
 
 # --- row 1：分組置頂顯示切換區 ---
 show_label_frames = []
@@ -148,58 +158,45 @@ for col in range(3):
     group_frame = tb.Frame(frm, borderwidth=1, relief="solid", padding=2)
     group_frame.grid(row=2, column=col, padx=2, pady=2, sticky="nsew")
     frm.grid_columnconfigure(col, weight=1)
+    group_frame.grid_columnconfigure(1, weight=1)  # 讓檔案名稱欄自動展開
     group_frames.append(group_frame)
 num_font = tkfont.Font(family="Microsoft JhengHei", size=12, weight="bold")
 checkbox_vars_entries = []
-for i in range(12):  # 12行
-    entry = tb.Entry(group_frames[i // 4], width=14, state="readonly")
+for i in range(15):  # 15行
+    row = i % 5  # 每欄5組
+    col = i // 5
+    entry = tb.Entry(group_frames[col], state="readonly", width=10)
+    entry.grid(row=row, column=1, padx=0, pady=1, sticky="ew")  # sticky="ew" 讓欄位自動展開
     group_var1 = tk.StringVar(value="")
     group_var2 = tk.StringVar(value="")
     group_var3 = tk.StringVar(value="")
     group_var4 = tk.StringVar(value="")
+    combo_width = 4  # 統一選單寬度
     group_combo1 = tb.Combobox(
-        group_frames[i // 4], textvariable=group_var1,
-        values=[""] + [group_display_names[c].get() for c in group_codes], width=4, state="readonly"
+        group_frames[col], textvariable=group_var1,
+        values=[""] + [group_display_names[c].get() for c in group_codes], width=combo_width, state="readonly"
     )
     group_combo2 = tb.Combobox(
-        group_frames[i // 4], textvariable=group_var2,
-        values=[""] + [group_display_names[c].get() for c in group_codes], width=4, state="readonly"
+        group_frames[col], textvariable=group_var2,
+        values=[""] + [group_display_names[c].get() for c in group_codes], width=combo_width, state="readonly"
     )
     group_combo3 = tb.Combobox(
-        group_frames[i // 4], textvariable=group_var3,
-        values=[""] + [group_display_names[c].get() for c in group_codes], width=4, state="readonly"
+        group_frames[col], textvariable=group_var3,
+        values=[""] + [group_display_names[c].get() for c in group_codes], width=combo_width, state="readonly"
     )
     group_combo4 = tb.Combobox(
-        group_frames[i // 4], textvariable=group_var4,
-        values=[""] + [group_display_names[c].get() for c in group_codes], width=4, state="readonly"
+        group_frames[col], textvariable=group_var4,
+        values=[""] + [group_display_names[c].get() for c in group_codes], width=combo_width, state="readonly"
     )
-    row = i % 4
-    num_label = tb.Label(group_frames[i // 4], text=str(i+1), width=2)
+    num_label = tb.Label(group_frames[col], text=str(i+1), width=2)
     num_label['font'] = num_font
     num_label.grid(row=row, column=0, sticky="w", padx=0)
-    entry.grid(row=row, column=1, padx=0, pady=1)
+    # entry 已經 grid 在上面
     group_combo1.grid(row=row, column=2, padx=0, pady=1)
     group_combo2.grid(row=row, column=3, padx=0, pady=1)
     group_combo3.grid(row=row, column=4, padx=0, pady=1)
     group_combo4.grid(row=row, column=5, padx=0, pady=1)
     checkbox_vars_entries.append((entry, group_var1, group_var2, group_var3, group_var4, group_combo1, group_combo2, group_combo3, group_combo4))
-
-def get_group_code_by_display_name(display_name):
-    for code in group_codes:
-        if group_display_names[code].get() == display_name:
-            return code
-    return None
-
-def get_group_files(group_code):
-    files = []
-    for entry, group_var1, group_var2, group_var3, *_ in checkbox_vars_entries:
-        code1 = get_group_code_by_display_name(group_var1.get())
-        code2 = get_group_code_by_display_name(group_var2.get())
-        code3 = get_group_code_by_display_name(group_var3.get())
-        filename = entry.get()
-        if filename and (group_code == code1 or group_code == code2 or group_code == code3):
-            files.append(filename)
-    return files
 
 # --- row 8~10 動態日誌區塊 ---
 log_text = tb.Text(frm, height=18, width=18, state="disabled", wrap="word", font=tkfont.Font(family="Microsoft JhengHei", size=10))
@@ -245,80 +242,128 @@ for row, col, text, code, bootstyle, cmd in group_btn_grid:
 # --- row 10 檔案名稱/視窗名稱列表 ---
 bottom_frame = tb.Frame(frm)
 bottom_frame.grid(row=10, column=1, columnspan=2, sticky="ew", pady=(8, 2))
-bottom_frame.grid_columnconfigure(0, weight=1)
+bottom_frame.grid_columnconfigure(0, weight=1)  # 兩欄等寬
 bottom_frame.grid_columnconfigure(1, weight=1)
 bottom_frame.grid_rowconfigure(0, weight=1)
 
-file_list_outer = tb.Frame(bottom_frame, width=290)
-file_list_outer.grid(row=0, column=0, sticky="nsw")
-file_list_outer.grid_propagate(False)
+# 檔案名稱列表（左側，寬度自動展開）
+file_list_outer = tb.Frame(bottom_frame)
+file_list_outer.grid(row=0, column=0, sticky="nsew")
+file_list_outer.grid_propagate(True)
 file_list_outer.grid_rowconfigure(0, weight=1)
 file_list_outer.grid_columnconfigure(0, weight=1)
-file_list_canvas = tk.Canvas(file_list_outer, highlightthickness=0, height=120)
+file_list_canvas = tk.Canvas(file_list_outer, highlightthickness=0)
 file_list_canvas.grid(row=0, column=0, sticky="nsew")
 file_list_inner_frame = tb.Frame(file_list_canvas)
-file_list_canvas.create_window((0, 0), window=file_list_inner_frame, anchor="nw")
+file_list_inner_frame_id = file_list_canvas.create_window((0, 0), window=file_list_inner_frame, anchor="nw")
+file_list_inner_frame.grid_columnconfigure(0, weight=1)  # 讓label自動填滿
 
-window_list_outer = tb.Frame(bottom_frame)
-window_list_outer.grid(row=0, column=1, sticky="nsew")
-window_list_outer.grid_rowconfigure(0, weight=1)
-window_list_outer.grid_columnconfigure(0, weight=1)
-window_list_canvas = tk.Canvas(window_list_outer, highlightthickness=0)
-window_list_canvas.grid(row=0, column=0, sticky="nsew")
-window_list_inner_frame = tb.Frame(window_list_canvas)
-window_list_canvas.create_window((0, 0), window=window_list_inner_frame, anchor="nw")
+file_list_vsb = tb.Scrollbar(file_list_outer, orient="vertical", command=file_list_canvas.yview)
+file_list_vsb.grid(row=0, column=1, sticky="ns")
+file_list_canvas.configure(yscrollcommand=file_list_vsb.set)
 
 def _on_file_frame_configure(event):
     file_list_canvas.configure(scrollregion=file_list_canvas.bbox("all"))
+    file_list_canvas.itemconfig(file_list_inner_frame_id, width=file_list_canvas.winfo_width())
 file_list_inner_frame.bind("<Configure>", _on_file_frame_configure)
+
+def _on_file_mousewheel(event):
+    file_list_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+file_list_canvas.bind("<Enter>", lambda e: file_list_canvas.bind_all("<MouseWheel>", _on_file_mousewheel))
+file_list_canvas.bind("<Leave>", lambda e: file_list_canvas.unbind_all("<MouseWheel>"))
+
+# ==========================
+# 下面是全新正確的視窗名稱列表設計
+# ==========================
+window_list_outer = tb.Frame(bottom_frame)
+window_list_outer.grid(row=0, column=1, sticky="nsew")
+window_list_outer.grid_propagate(True)
+window_list_outer.grid_rowconfigure(0, weight=1)
+window_list_outer.grid_columnconfigure(0, weight=1)
+
+window_list_canvas = tk.Canvas(window_list_outer, highlightthickness=0)
+window_list_canvas.grid(row=0, column=0, sticky="nsew")
+window_list_inner_frame = tb.Frame(window_list_canvas)
+window_list_inner_frame_id = window_list_canvas.create_window((0, 0), window=window_list_inner_frame, anchor="nw")
+window_list_inner_frame.grid_columnconfigure(0, weight=1)
+
+window_list_vsb = tb.Scrollbar(window_list_outer, orient="vertical", command=window_list_canvas.yview)
+window_list_canvas.configure(yscrollcommand=lambda *args: _on_window_vsb(*args))
+
+def _on_window_vsb(*args):
+    window_list_vsb.set(*args)
+    # 自動隱藏/顯示
+    if float(args[0]) <= 0.0 and float(args[1]) >= 1.0:
+        window_list_vsb.grid_remove()
+    else:
+        window_list_vsb.grid(row=0, column=1, sticky="ns")
 
 def _on_window_frame_configure(event):
     window_list_canvas.configure(scrollregion=window_list_canvas.bbox("all"))
+    window_list_canvas.itemconfig(window_list_inner_frame_id, width=window_list_canvas.winfo_width())
 window_list_inner_frame.bind("<Configure>", _on_window_frame_configure)
 
-def get_taskbar_window_titles():
-    exclude_titles = ["設定", "windows 輸入體驗", "windows input experience"]  # 可自行擴充
-    titles = []
-    def enum_handler(hwnd, _):
-        if win32gui.IsWindowVisible(hwnd):
-            t = win32gui.GetWindowText(hwnd)
-            t_lower = t.strip().lower()
-            if t and all(ex not in t_lower for ex in exclude_titles):
-                titles.append(t)
-    win32gui.EnumWindows(enum_handler, None)
-    return titles
+def _on_window_mousewheel(event):
+    window_list_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+window_list_canvas.bind("<Enter>", lambda e: window_list_canvas.bind_all("<MouseWheel>", _on_window_mousewheel))
+window_list_canvas.bind("<Leave>", lambda e: window_list_canvas.unbind_all("<MouseWheel>"))
+
+# 建立 window_list_inner_frame 的 window id 以便寬度自動調整
+window_list_inner_frame_id = window_list_canvas.create_window((0, 0), window=window_list_inner_frame, anchor="nw")
 
 def update_file_list():
-    # 取得目前資料夾檔案
+    # 清空現有檔案列表
     for widget in file_list_inner_frame.winfo_children():
         widget.destroy()
     folder = folder_var.get()
     if not os.path.isdir(folder):
         return
     files = [f for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))]
-    files.sort()
-    for row, fname in enumerate(files):
-        lbl = tb.Label(file_list_inner_frame, text=fname, anchor="w", width=15, font=tkfont.Font(family="Microsoft JhengHei", size=10))
+    for row, filename in enumerate(files):
+        lbl = tb.Label(
+            file_list_inner_frame,
+            text=filename,
+            anchor="w",
+            font=tkfont.Font(family="Microsoft JhengHei", size=10)
+        )
         lbl.grid(row=row, column=0, sticky="ew", padx=2, pady=1)
-        lbl.bind("<ButtonPress-1>", lambda e, t=fname: on_label_drag_start(e, t))
     file_list_inner_frame.update_idletasks()
     file_list_canvas.config(scrollregion=file_list_canvas.bbox("all"))
+    window_list_inner_frame.update_idletasks()
+    window_list_canvas.config(scrollregion=window_list_canvas.bbox("all"))
+
+def get_taskbar_window_titles():
+    # 捕捉所有可見視窗標題，排除系統/背景視窗
+    exclude_keywords = [
+        "設定", "windows 輸入體驗", "windows input experience", "searchui", "cortana", "開始功能表", "start menu",
+        "工作管理員", "task manager", "lockapp", "shell experience host", "runtimebroker", "searchapp"
+    ]
+    titles = []
+    def enum_handler(hwnd, _):
+        if win32gui.IsWindowVisible(hwnd):
+            title = win32gui.GetWindowText(hwnd)
+            if title and title.strip():
+                title_lower = title.strip().lower()
+                # 過濾系統視窗
+                if not any(keyword in title_lower for keyword in exclude_keywords):
+                    titles.append(title)
+    win32gui.EnumWindows(enum_handler, None)
+    return titles
 
 def update_window_list():
     # 清空現有視窗列表
     for widget in window_list_inner_frame.winfo_children():
         widget.destroy()
     titles = get_taskbar_window_titles()
-    col_count = (len(titles) + 4) // 5  # 每欄5個，計算需要幾欄
-    for col in range(col_count):
-        for row in range(5):
-            idx = col * 5 + row
-            if idx >= len(titles):
-                break
-            title = titles[idx]
-            lbl = tb.Label(window_list_inner_frame, text=title, anchor="w", width=22, font=tkfont.Font(family="Microsoft JhengHei", size=10))
-            lbl.grid(row=row, column=col, sticky="ew", padx=2, pady=1)
-            lbl.bind("<ButtonPress-1>", lambda e, t=title: on_label_drag_start(e, t))
+    for row, title in enumerate(titles):
+        lbl = tb.Label(
+            window_list_inner_frame,
+            text=title,
+            anchor="w",
+            font=tkfont.Font(family="Microsoft JhengHei", size=10)
+        )
+        lbl.grid(row=row, column=0, sticky="ew", padx=2, pady=1)
+        lbl.bind("<ButtonPress-1>", lambda e, t=title: on_label_drag_start(e, t))
     window_list_inner_frame.update_idletasks()
     window_list_canvas.config(scrollregion=window_list_canvas.bbox("all"))
 
@@ -659,5 +704,47 @@ def log(msg):
         log_text.insert("end", full_msg + "\n")
         log_text.see("end")
         log_text.config(state="disabled")
+
+def get_group_files(group_code):
+    # 取得 row2 這一組所有 entry 屬於該分組的檔案名稱
+    files = []
+    for entry, var1, var2, var3, var4, *_ in checkbox_vars_entries:
+        # 假設每個 entry 只屬於一個分組（以 var1~var4 判斷）
+        if var1.get() == group_display_names[group_code].get() or \
+           var2.get() == group_display_names[group_code].get() or \
+           var3.get() == group_display_names[group_code].get() or \
+           var4.get() == group_display_names[group_code].get():
+            val = entry.get().strip()
+            if val:
+                files.append(val)
+    return files
+
+def update_group_name(*args):
+    # 更新所有 row2 下拉選單的顯示名稱
+    new_values = [""] + [group_display_names[c].get() for c in group_codes]
+    for _, _, _, _, _, combo1, combo2, combo3, combo4 in checkbox_vars_entries:
+        combo1.config(values=new_values)
+        combo2.config(values=new_values)
+        combo3.config(values=new_values)
+        combo4.config(values=new_values)
+    # 更新所有啟動/關閉按鈕的顯示名稱
+    for code in group_codes:
+        if code in group_buttons:
+            group_buttons[code].config(text=f"啟動 {group_display_names[code].get()}")
+        if code in close_buttons:
+            close_buttons[code].config(text=f"關閉 {group_display_names[code].get()}")
+
+# 綁定分組名稱變動時自動更新
+for c in group_codes:
+    group_display_names[c].trace_add("write", update_group_name)
+
+# 新增：視窗滾動條隱藏與顯示
+def _on_window_vsb(*args):
+    window_list_vsb.set(*args)
+    if float(args[0]) <= 0.0 and float(args[1]) >= 1.0:
+        window_list_vsb.grid_remove()
+    else:
+        window_list_vsb.grid(row=0, column=1, sticky="ns")
+window_list_canvas.configure(yscrollcommand=_on_window_vsb)
 
 app.mainloop()
