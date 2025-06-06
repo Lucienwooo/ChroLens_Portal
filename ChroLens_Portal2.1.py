@@ -19,6 +19,7 @@ import keyboard
 from tkinter import font as tkfont
 import functools
 import atexit
+import win32process
 
 # row 0：頂部工具列（資料夾選擇、間隔秒數、分組名稱編輯、存檔按鈕）
 # row 1：分組置頂顯示切換區（顯示分組名稱與快捷鍵）
@@ -335,6 +336,8 @@ def update_file_list():
             font=tkfont.Font(family="Microsoft JhengHei", size=10)
         )
         lbl.grid(row=row, column=0, sticky="ew", padx=2, pady=1)
+        # 修正：lambda 預設參數正確傳遞 filename
+        lbl.bind("<ButtonPress-1>", lambda e, t=filename: on_label_drag_start(e, t))
     file_list_inner_frame.update_idletasks()
     file_list_canvas.config(scrollregion=file_list_canvas.bbox("all"))
 
@@ -388,25 +391,6 @@ def update_window_list():
         lbl.bind("<ButtonPress-1>", lambda e, t=title: on_label_drag_start(e, t))
     window_list_inner_frame.update_idletasks()
     window_list_canvas.config(scrollregion=window_list_canvas.bbox("all"))
-
-def update_file_list():
-    # 清空現有檔案列表
-    for widget in file_list_inner_frame.winfo_children():
-        widget.destroy()
-    folder = folder_var.get()
-    if not os.path.isdir(folder):
-        return
-    files = [f for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))]
-    for row, filename in enumerate(files):
-        lbl = tb.Label(
-            file_list_inner_frame,
-            text=filename,
-            anchor="w",
-            font=tkfont.Font(family="Microsoft JhengHei", size=10)
-        )
-        lbl.grid(row=row, column=0, sticky="ew", padx=2, pady=1)
-    file_list_inner_frame.update_idletasks()
-    file_list_canvas.config(scrollregion=file_list_canvas.bbox("all"))
 
 def get_taskbar_window_titles():
     # 捕捉所有可見視窗標題，排除系統/背景視窗
@@ -558,24 +542,6 @@ def set_group_windows_topmost(group_code):
 
     log(f"已將分組 {group_display_names[group_code].get()} 以外的視窗全部退到最下層（本次退後 {len(new_to_retreated)} 個）")
 
-def register_global_hotkeys():
-    for idx, code in enumerate(group_codes):
-        hotkey = group_hotkeys[idx].get()
-        try:
-            keyboard.remove_hotkey(f"group_{code}")
-        except Exception:
-            pass
-        keyboard.add_hotkey(
-            hotkey,
-            functools.partial(set_group_windows_topmost, code),
-            suppress=False,
-            trigger_on_release=False
-        )
-
-for idx, var in enumerate(group_hotkeys):
-    var.trace_add("write", lambda *a, i=idx: register_global_hotkeys())
-
-register_global_hotkeys()
 
 def start_group_opening(group_code):
     folder = folder_var.get()
@@ -679,7 +645,20 @@ def save_settings():
         with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        pass
+        log(f"儲存設定檔失敗: {e}")
+
+        
+# 1. 先定義 log
+log_history = []
+def log(msg):
+    timestamp = time.strftime("%H:%M:%S")
+    full_msg = f"[{timestamp}] {msg}"
+    log_history.append(full_msg)
+    if log_text.winfo_exists():
+        log_text.config(state="normal")
+        log_text.insert("end", full_msg + "\n")
+        log_text.see("end")
+        log_text.config(state="disabled")
 
 def load_settings():
     if not os.path.exists(SETTINGS_FILE):
@@ -765,32 +744,6 @@ def auto_refresh_window_list():
 # 啟動時呼叫一次
 auto_refresh_window_list()
 
-log_history = []
-
-def log(msg):
-    timestamp = time.strftime("%H:%M:%S")
-    full_msg = f"[{timestamp}] {msg}"
-    log_history.append(full_msg)
-    if log_text.winfo_exists():
-        log_text.config(state="normal")
-        log_text.insert("end", full_msg + "\n")
-        log_text.see("end")
-        log_text.config(state="disabled")
-
-def get_group_files(group_code):
-    # 取得 row2 這一組所有 entry 屬於該分組的檔案名稱
-    files = []
-    for entry, var1, var2, var3, var4, *_ in checkbox_vars_entries:
-        # 假設每個 entry 只屬於一個分組（以 var1~var4 判斷）
-        if var1.get() == group_display_names[group_code].get() or \
-           var2.get() == group_display_names[group_code].get() or \
-           var3.get() == group_display_names[group_code].get() or \
-           var4.get() == group_display_names[group_code].get():
-            val = entry.get().strip()
-            if val:
-                files.append(val)
-    return files
-
 def update_group_name(*args):
     # 更新所有 row2 下拉選單的顯示名稱
     new_values = [""] + [group_display_names[c].get() for c in group_codes]
@@ -860,5 +813,83 @@ def show_about_dialog():
 # 新增「關於」按鈕
 about_btn = tb.Button(top_row_frame, text="關於", command=show_about_dialog, bootstyle=SECONDARY, width=6)
 about_btn.grid(row=0, column=9, padx=(8,2), sticky="e")
+
+
+def get_group_files(group_code):
+    """取得指定分組的檔案名稱清單（從 row2 的 entry 取得）"""
+    files = []
+    for entry, var1, var2, var3, var4, *_ in checkbox_vars_entries:
+        # 判斷這一行是否屬於該分組
+        if (
+            var1.get() == group_display_names[group_code].get()
+            or var2.get() == group_display_names[group_code].get()
+            or var3.get() == group_display_names[group_code].get()
+            or var4.get() == group_display_names[group_code].get()
+        ):
+            val = entry.get().strip()
+            if val:
+                files.append(val)
+    return files
+
+# --- 分組循環聚焦功能 ---
+group_focus_indexes = {code: 0 for code in group_codes}
+group_hwnd_lists = {code: [] for code in group_codes}
+
+def update_group_hwnd_list(group_code):
+    files = get_group_files(group_code)
+    target_titles = [os.path.splitext(os.path.basename(f))[0].lower() for f in files if f]
+    hwnds = []
+    def enum_handler(hwnd, _):
+        if not win32gui.IsWindowVisible(hwnd):
+            return
+        window_text = win32gui.GetWindowText(hwnd).lower().strip()
+        if any(title and title in window_text for title in target_titles):
+            hwnds.append(hwnd)
+    win32gui.EnumWindows(enum_handler, None)
+    group_hwnd_lists[group_code] = hwnds
+
+def focus_next_in_group(group_code):
+    update_group_hwnd_list(group_code)
+    hwnds = group_hwnd_lists[group_code]
+    if not hwnds:
+        log(f"分組 {group_display_names[group_code].get()} 沒有視窗")
+        return
+    idx = group_focus_indexes[group_code]
+    hwnd = hwnds[idx % len(hwnds)]
+    try:
+        if win32gui.IsIconic(hwnd):
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+        keyboard.press_and_release('alt')  # 模擬按一下 Alt
+        win32gui.BringWindowToTop(hwnd)
+        win32gui.SetForegroundWindow(hwnd)
+        log(f"切換到分組 {group_display_names[group_code].get()} 的視窗：{win32gui.GetWindowText(hwnd)}")
+    except Exception as e:
+        log(f"切換視窗失敗: {e}")
+    group_focus_indexes[group_code] = (idx + 1) % len(hwnds)
+
+def register_global_hotkeys():
+    for idx, code in enumerate(group_codes):
+        hotkey = group_hotkeys[idx].get()
+        try:
+            keyboard.remove_hotkey(f"group_{code}")
+        except Exception:
+            pass
+        keyboard.add_hotkey(
+            hotkey,
+            functools.partial(focus_next_in_group, code),
+            suppress=False,
+            trigger_on_release=False
+        )
+
+for idx, var in enumerate(group_hotkeys):
+    var.trace_add("write", lambda *a, i=idx: register_global_hotkeys())
+
+register_global_hotkeys()
+
+
+
+
+    # 啟動時呼叫一次
+auto_refresh_window_list()
 
 app.mainloop()
