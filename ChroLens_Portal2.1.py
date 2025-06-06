@@ -1,6 +1,8 @@
 ### ChroLens_Portal 2.0 
 ### 2025/05/26 By Lucienwooo
-
+### pyinstaller --onedir --noconsole --add-data "冥想貓貓.ico;." --icon=冥想貓貓.ico --hidden-import=win32timezone ChroLens_Portal2.1.py
+# 1.啟動和關閉的按鈕順序ABE CDF 更改順序
+# 2.修正.lnk捷徑檔案無法開啟的問題
 import os
 import time
 import win32gui
@@ -49,7 +51,7 @@ except Exception as e:
 num_font = tkfont.Font(family="Microsoft JhengHei", size=10, weight="bold")
 
 # 主視窗寬度
-app.geometry("1200x720")  # 依需求調整
+app.geometry("1200x850")  # 依需求調整
 
 # --- 主 Frame ---
 frm = tb.Frame(app, padding=2)
