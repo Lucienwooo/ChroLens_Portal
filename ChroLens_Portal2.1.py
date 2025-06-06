@@ -44,6 +44,9 @@ try:
 except Exception as e:
     print(f"無法設定 icon: {e}")
 
+# 在這裡建立字型物件
+num_font = tkfont.Font(family="Microsoft JhengHei", size=10, weight="bold")
+
 # 主視窗寬度
 app.geometry("1200x720")  # 依需求調整
 
@@ -95,19 +98,45 @@ save_btn.grid(row=0, column=5, padx=(8,2), sticky="e")
 # --- 新增：分組名稱修改區 ---
 group_name_edit_var = tk.StringVar()
 group_name_edit_combo_var = tk.StringVar(value=group_codes[0])
+group_name_placeholder = "修改分組名稱"
+group_name_edit_entry = None  # 先宣告
+
+def get_default_group_name(code):
+    return code  # 預設就是 A、B、C、D、E、F
+
+def show_placeholder():
+    if group_name_edit_entry.get() == "":
+        group_name_edit_entry.insert(0, group_name_placeholder)
+        group_name_edit_entry.config(foreground="#888")
+        group_name_edit_entry.placeholder = True
+
+def hide_placeholder():
+    if getattr(group_name_edit_entry, "placeholder", False):
+        group_name_edit_entry.delete(0, tk.END)
+        group_name_edit_entry.config(foreground="#fff")
+        group_name_edit_entry.placeholder = False
 
 def on_group_name_combo_change(event=None):
     code = group_name_edit_combo_var.get()
-    group_name_edit_var.set(group_display_names[code].get())
+    val = group_display_names[code].get()
+    group_name_edit_entry.delete(0, tk.END)
+    if not val or val == get_default_group_name(code):
+        show_placeholder()
+    else:
+        group_name_edit_entry.insert(0, val)
+        hide_placeholder()
 
 def on_group_name_edit_submit(event=None):
     code = group_name_edit_combo_var.get()
-    new_name = group_name_edit_var.get().strip()
-    if not new_name:
-        # 恢復預設
-        group_display_names[code].set(code)
+    entry_val = group_name_edit_entry.get().strip()
+    # 若是 placeholder 或空白，恢復預設
+    if not entry_val or entry_val == group_name_placeholder:
+        group_display_names[code].set(get_default_group_name(code))
+        group_name_edit_entry.delete(0, tk.END)
+        show_placeholder()
     else:
-        group_display_names[code].set(new_name)
+        group_display_names[code].set(entry_val)
+        hide_placeholder()
 
 group_name_edit_combo = tb.Combobox(
     top_row_frame, values=group_codes, textvariable=group_name_edit_combo_var, width=3, state="readonly"
@@ -115,14 +144,20 @@ group_name_edit_combo = tb.Combobox(
 group_name_edit_entry = tb.Entry(
     top_row_frame, textvariable=group_name_edit_var, width=12
 )
+group_name_edit_entry.placeholder = False
+
 group_name_edit_combo.grid(row=0, column=3, padx=(8,2), sticky="w")
 group_name_edit_entry.grid(row=0, column=4, padx=(2,2), sticky="w")
 save_btn.grid(row=0, column=5, padx=(8,2), sticky="e")
+
+# 綁定事件
 group_name_edit_combo.bind("<<ComboboxSelected>>", on_group_name_combo_change)
-group_name_edit_entry.bind("<FocusIn>", lambda e: group_name_edit_entry.delete(0, tk.END) if group_name_edit_entry.get() == "修改分組名稱" else None)
+group_name_edit_entry.bind("<FocusIn>", lambda e: (hide_placeholder(), group_name_edit_entry.config(foreground="#fff")))
+group_name_edit_entry.bind("<FocusOut>", lambda e: (show_placeholder() if not group_name_edit_entry.get().strip() else None, on_group_name_edit_submit()))
 group_name_edit_entry.bind("<Return>", on_group_name_edit_submit)
-group_name_edit_entry.bind("<FocusOut>", on_group_name_edit_submit)
-on_group_name_combo_change()
+
+# 初始化顯示 placeholder
+show_placeholder()
 
 # --- row 1：分組置頂顯示切換區 ---
 show_label_frames = []
@@ -158,12 +193,17 @@ for col in range(3):
     group_frame = tb.Frame(frm, borderwidth=1, relief="solid", padding=2)
     group_frame.grid(row=2, column=col, padx=2, pady=2, sticky="nsew")
     frm.grid_columnconfigure(col, weight=1)
-    group_frame.grid_columnconfigure(1, weight=1)  # 讓檔案名稱欄自動展開
+    group_frame.grid_columnconfigure(1, weight=2)  # 讓檔案名稱欄自動展開且多吃空間
+    for i in range(2, 6):  # combo欄不自動展開
+        group_frame.grid_columnconfigure(i, weight=0)
     group_frames.append(group_frame)
-num_font = tkfont.Font(family="Microsoft JhengHei", size=12, weight="bold")
+
+combo_width = 3  # 原本是4，縮短1/3
+
 checkbox_vars_entries = []
+
 for i in range(15):  # 15行
-    row = i % 5  # 每欄5組
+    row = i % 5
     col = i // 5
     entry = tb.Entry(group_frames[col], state="readonly", width=10)
     entry.grid(row=row, column=1, padx=0, pady=1, sticky="ew")  # sticky="ew" 讓欄位自動展開
@@ -171,7 +211,6 @@ for i in range(15):  # 15行
     group_var2 = tk.StringVar(value="")
     group_var3 = tk.StringVar(value="")
     group_var4 = tk.StringVar(value="")
-    combo_width = 4  # 統一選單寬度
     group_combo1 = tb.Combobox(
         group_frames[col], textvariable=group_var1,
         values=[""] + [group_display_names[c].get() for c in group_codes], width=combo_width, state="readonly"
@@ -191,7 +230,7 @@ for i in range(15):  # 15行
     num_label = tb.Label(group_frames[col], text=str(i+1), width=2)
     num_label['font'] = num_font
     num_label.grid(row=row, column=0, sticky="w", padx=0)
-    # entry 已經 grid 在上面
+    entry.grid(row=row, column=1, padx=0, pady=1, sticky="ew")
     group_combo1.grid(row=row, column=2, padx=0, pady=1)
     group_combo2.grid(row=row, column=3, padx=0, pady=1)
     group_combo3.grid(row=row, column=4, padx=0, pady=1)
@@ -246,6 +285,8 @@ bottom_frame.grid_columnconfigure(0, weight=1)  # 兩欄等寬
 bottom_frame.grid_columnconfigure(1, weight=1)
 bottom_frame.grid_rowconfigure(0, weight=1)
 
+# ===== 交換：左側顯示檔案名稱列表，右側顯示視窗名稱列表 =====
+
 # 檔案名稱列表（左側，寬度自動展開）
 file_list_outer = tb.Frame(bottom_frame)
 file_list_outer.grid(row=0, column=0, sticky="nsew")
@@ -256,11 +297,17 @@ file_list_canvas = tk.Canvas(file_list_outer, highlightthickness=0)
 file_list_canvas.grid(row=0, column=0, sticky="nsew")
 file_list_inner_frame = tb.Frame(file_list_canvas)
 file_list_inner_frame_id = file_list_canvas.create_window((0, 0), window=file_list_inner_frame, anchor="nw")
-file_list_inner_frame.grid_columnconfigure(0, weight=1)  # 讓label自動填滿
+file_list_inner_frame.grid_columnconfigure(0, weight=1)
 
 file_list_vsb = tb.Scrollbar(file_list_outer, orient="vertical", command=file_list_canvas.yview)
-file_list_vsb.grid(row=0, column=1, sticky="ns")
-file_list_canvas.configure(yscrollcommand=file_list_vsb.set)
+file_list_canvas.configure(yscrollcommand=lambda *args: _on_file_vsb(*args))
+
+def _on_file_vsb(*args):
+    file_list_vsb.set(*args)
+    if float(args[0]) <= 0.0 and float(args[1]) >= 1.0:
+        file_list_vsb.grid_remove()
+    else:
+        file_list_vsb.grid(row=0, column=1, sticky="ns")
 
 def _on_file_frame_configure(event):
     file_list_canvas.configure(scrollregion=file_list_canvas.bbox("all"))
@@ -271,45 +318,6 @@ def _on_file_mousewheel(event):
     file_list_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
 file_list_canvas.bind("<Enter>", lambda e: file_list_canvas.bind_all("<MouseWheel>", _on_file_mousewheel))
 file_list_canvas.bind("<Leave>", lambda e: file_list_canvas.unbind_all("<MouseWheel>"))
-
-# ==========================
-# 下面是全新正確的視窗名稱列表設計
-# ==========================
-window_list_outer = tb.Frame(bottom_frame)
-window_list_outer.grid(row=0, column=1, sticky="nsew")
-window_list_outer.grid_propagate(True)
-window_list_outer.grid_rowconfigure(0, weight=1)
-window_list_outer.grid_columnconfigure(0, weight=1)
-
-window_list_canvas = tk.Canvas(window_list_outer, highlightthickness=0)
-window_list_canvas.grid(row=0, column=0, sticky="nsew")
-window_list_inner_frame = tb.Frame(window_list_canvas)
-window_list_inner_frame_id = window_list_canvas.create_window((0, 0), window=window_list_inner_frame, anchor="nw")
-window_list_inner_frame.grid_columnconfigure(0, weight=1)
-
-window_list_vsb = tb.Scrollbar(window_list_outer, orient="vertical", command=window_list_canvas.yview)
-window_list_canvas.configure(yscrollcommand=lambda *args: _on_window_vsb(*args))
-
-def _on_window_vsb(*args):
-    window_list_vsb.set(*args)
-    # 自動隱藏/顯示
-    if float(args[0]) <= 0.0 and float(args[1]) >= 1.0:
-        window_list_vsb.grid_remove()
-    else:
-        window_list_vsb.grid(row=0, column=1, sticky="ns")
-
-def _on_window_frame_configure(event):
-    window_list_canvas.configure(scrollregion=window_list_canvas.bbox("all"))
-    window_list_canvas.itemconfig(window_list_inner_frame_id, width=window_list_canvas.winfo_width())
-window_list_inner_frame.bind("<Configure>", _on_window_frame_configure)
-
-def _on_window_mousewheel(event):
-    window_list_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-window_list_canvas.bind("<Enter>", lambda e: window_list_canvas.bind_all("<MouseWheel>", _on_window_mousewheel))
-window_list_canvas.bind("<Leave>", lambda e: window_list_canvas.unbind_all("<MouseWheel>"))
-
-# 建立 window_list_inner_frame 的 window id 以便寬度自動調整
-window_list_inner_frame_id = window_list_canvas.create_window((0, 0), window=window_list_inner_frame, anchor="nw")
 
 def update_file_list():
     # 清空現有檔案列表
@@ -329,8 +337,76 @@ def update_file_list():
         lbl.grid(row=row, column=0, sticky="ew", padx=2, pady=1)
     file_list_inner_frame.update_idletasks()
     file_list_canvas.config(scrollregion=file_list_canvas.bbox("all"))
+
+# 視窗名稱列表（右側，寬度自動展開）
+window_list_outer = tb.Frame(bottom_frame)
+window_list_outer.grid(row=0, column=1, sticky="nsew")
+window_list_outer.grid_propagate(True)
+window_list_outer.grid_rowconfigure(0, weight=1)
+window_list_outer.grid_columnconfigure(0, weight=1)
+window_list_canvas = tk.Canvas(window_list_outer, highlightthickness=0)
+window_list_canvas.grid(row=0, column=0, sticky="nsew")
+window_list_inner_frame = tb.Frame(window_list_canvas)
+window_list_inner_frame_id = window_list_canvas.create_window((0, 0), window=window_list_inner_frame, anchor="nw")
+window_list_inner_frame.grid_columnconfigure(0, weight=1)
+
+window_list_vsb = tb.Scrollbar(window_list_outer, orient="vertical", command=window_list_canvas.yview)  # ←提前到這裡
+
+window_list_vsb.grid(row=0, column=1, sticky="ns")
+def _on_window_vsb(*args):
+    window_list_vsb.set(*args)
+    # 自動隱藏/顯示
+    if float(args[0]) <= 0.0 and float(args[1]) >= 1.0:
+        window_list_vsb.grid_remove()
+    else:
+        window_list_vsb.grid(row=0, column=1, sticky="ns")
+window_list_canvas.configure(yscrollcommand=_on_window_vsb)
+
+def _on_window_frame_configure(event):
+    window_list_canvas.configure(scrollregion=window_list_canvas.bbox("all"))
+    window_list_canvas.itemconfig(window_list_inner_frame_id, width=window_list_canvas.winfo_width())
+window_list_inner_frame.bind("<Configure>", _on_window_frame_configure)
+
+def _on_window_mousewheel(event):
+    window_list_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+window_list_canvas.bind("<Enter>", lambda e: window_list_canvas.bind_all("<MouseWheel>", _on_window_mousewheel))
+window_list_canvas.bind("<Leave>", lambda e: window_list_canvas.unbind_all("<MouseWheel>"))
+
+def update_window_list():
+    # 清空現有視窗列表
+    for widget in window_list_inner_frame.winfo_children():
+        widget.destroy()
+    titles = get_taskbar_window_titles()
+    for row, title in enumerate(titles):
+        lbl = tb.Label(
+            window_list_inner_frame,
+            text=title,
+            anchor="w",
+            font=tkfont.Font(family="Microsoft JhengHei", size=10)
+        )
+        lbl.grid(row=row, column=0, sticky="ew", padx=2, pady=1)
+        lbl.bind("<ButtonPress-1>", lambda e, t=title: on_label_drag_start(e, t))
     window_list_inner_frame.update_idletasks()
     window_list_canvas.config(scrollregion=window_list_canvas.bbox("all"))
+
+def update_file_list():
+    # 清空現有檔案列表
+    for widget in file_list_inner_frame.winfo_children():
+        widget.destroy()
+    folder = folder_var.get()
+    if not os.path.isdir(folder):
+        return
+    files = [f for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))]
+    for row, filename in enumerate(files):
+        lbl = tb.Label(
+            file_list_inner_frame,
+            text=filename,
+            anchor="w",
+            font=tkfont.Font(family="Microsoft JhengHei", size=10)
+        )
+        lbl.grid(row=row, column=0, sticky="ew", padx=2, pady=1)
+    file_list_inner_frame.update_idletasks()
+    file_list_canvas.config(scrollregion=file_list_canvas.bbox("all"))
 
 def get_taskbar_window_titles():
     # 捕捉所有可見視窗標題，排除系統/背景視窗
@@ -371,9 +447,7 @@ def update_window_list():
 update_file_list()
 update_window_list()
 
-# 滑鼠橫向滾輪支援
-def _on_window_mousewheel(event):
-    window_list_canvas.xview_scroll(int(-1*(event.delta/120)), "units")
+
 window_list_canvas.bind("<Enter>", lambda e: window_list_canvas.bind_all("<MouseWheel>", _on_window_mousewheel))
 window_list_canvas.bind("<Leave>", lambda e: window_list_canvas.unbind_all("<MouseWheel>"))
 
@@ -597,13 +671,14 @@ def save_settings():
             "group_display_names": {c: group_display_names[c].get() for c in group_codes},
             "group_hotkeys": [v.get() for v in group_hotkeys],
             "checkbox_entries": [entry.get() for entry, *_ in checkbox_vars_entries],
-            "group_var1": [var1.get() for _, var1, _, _, _ in checkbox_vars_entries],
-            "group_var2": [var2.get() for _, _, var2, _, _ in checkbox_vars_entries],
+            "group_var1": [var1.get() for _, var1, _, _, _, *_ in checkbox_vars_entries],
+            "group_var2": [var2.get() for _, _, var2, _, _, *_ in checkbox_vars_entries],
+            "group_var3": [var3.get() for _, _, _, var3, _, *_ in checkbox_vars_entries],
+            "group_var4": [var4.get() for _, _, _, _, var4, *_ in checkbox_vars_entries],
         }
         with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        # 程式結束時 Tk 物件已銷毀，這裡忽略錯誤即可
         pass
 
 def load_settings():
@@ -627,15 +702,12 @@ def load_settings():
                 ent.delete(0, END)
                 ent.insert(0, entry)
                 ent.config(state="readonly")
-        group_var1s = data.get("group_var1", [])
-        group_var2s = data.get("group_var2", [])
-        for i, v in enumerate(group_var1s):
-            if i < len(checkbox_vars_entries):
-                checkbox_vars_entries[i][1].set(v)
-        for i, v in enumerate(group_var2s):
-            if i < len(checkbox_vars_entries):
-                checkbox_vars_entries[i][2].set(v)
-        # --- 新增：強制同步 UI 顯示 ---
+        # 讀取所有 group_var1~4
+        for idx, key in enumerate(["group_var1", "group_var2", "group_var3", "group_var4"]):
+            group_vars = data.get(key, [])
+            for i, v in enumerate(group_vars):
+                if i < len(checkbox_vars_entries):
+                    checkbox_vars_entries[i][1+idx].set(v)
         update_show_labels()
         update_group_name()
     except Exception as e:
@@ -741,10 +813,52 @@ for c in group_codes:
 # 新增：視窗滾動條隱藏與顯示
 def _on_window_vsb(*args):
     window_list_vsb.set(*args)
+    # 自動隱藏/顯示
     if float(args[0]) <= 0.0 and float(args[1]) >= 1.0:
         window_list_vsb.grid_remove()
     else:
         window_list_vsb.grid(row=0, column=1, sticky="ns")
 window_list_canvas.configure(yscrollcommand=_on_window_vsb)
+
+
+def show_about_dialog():
+    about_win = tb.Toplevel(app)
+    about_win.title("關於 ChroLens_Mimic")
+    about_win.geometry("450x300")
+    about_win.resizable(False, False)
+    about_win.grab_set()
+    # 置中顯示
+    app.update_idletasks()
+    x = app.winfo_x() + (app.winfo_width() // 2) - 175
+    y = app.winfo_y() + 80
+    about_win.geometry(f"+{x}+{y}")
+
+    # 設定icon與主程式相同
+    try:
+        import sys, os
+        if getattr(sys, 'frozen', False):
+            icon_path = os.path.join(sys._MEIPASS, "冥想貓貓.ico")
+        else:
+            icon_path = "冥想貓貓.ico"
+        about_win.iconbitmap(icon_path)
+    except Exception as e:
+        print(f"無法設定 about 視窗 icon: {e}")
+
+    frm = tb.Frame(about_win, padding=20)
+    frm.pack(fill="both", expand=True)
+
+    tb.Label(frm, text="ChroLens_Portal\n實現分組開啟程式/分組視窗置頂顯示/分組關閉等情境切換功能", font=("Microsoft JhengHei", 11,)).pack(anchor="w", pady=(0, 6))
+    link = tk.Label(frm, text="ChroLens_模擬器討論區", font=("Microsoft JhengHei", 10, "underline"), fg="#5865F2", cursor="hand2")
+    link.pack(anchor="w")
+    link.bind("<Button-1>", lambda e: os.startfile("https://discord.gg/72Kbs4WPPn"))
+    github = tk.Label(frm, text="查看更多工具(巴哈)", font=("Microsoft JhengHei", 10, "underline"), fg="#24292f", cursor="hand2")
+    github.pack(anchor="w", pady=(8, 0))
+    github.bind("<Button-1>", lambda e: os.startfile("https://home.gamer.com.tw/profile/index_creation.php?owner=umiwued&folder=523848"))
+    tb.Label(frm, text="Creat By Lucienwooo", font=("Microsoft JhengHei", 11,)).pack(anchor="w", pady=(0, 6))
+    tb.Button(frm, text="關閉", command=about_win.destroy, width=8, bootstyle=SECONDARY).pack(anchor="e", pady=(16, 0))
+
+# 新增「關於」按鈕
+about_btn = tb.Button(top_row_frame, text="關於", command=show_about_dialog, bootstyle=SECONDARY, width=6)
+about_btn.grid(row=0, column=9, padx=(8,2), sticky="e")
 
 app.mainloop()
