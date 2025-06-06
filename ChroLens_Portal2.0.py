@@ -354,7 +354,7 @@ def save_last_path(path):
 
 # === 介面區塊 ===
 app = tb.Window(themename="darkly")
-app.title("ChroLens_Portal 2.0.0")
+app.title("ChroLens_Portal 2.0")
 try:
     ico_path = resource_path("冥想貓貓.ico")
     app.iconbitmap(ico_path)
