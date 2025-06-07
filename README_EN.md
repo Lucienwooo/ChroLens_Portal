@@ -1,52 +1,65 @@
 # ChroLens_Portal
 ## Future Plans
-* Potentially add scheduled automatic program opening and group activation/deactivation.
+* Possibly add timed automatic program launch and group activation/deactivation.
 ---
 
-[繁體中文](README.md) | [日本語](README_JA.md)
+[English](README_EN.md) | [日本語](README_JA.md)
 
 ---
-![ChroLens_Portal_Basic_Operations](pic01.png)
-[[ChroLens_Portal_基本操作]](https://player.vimeo.com/video/1087659485?h=83487a7ea9)
-### ChroLens_Portal Core Feature: Turn Your PC into a "Lazy Pack" Launcher!
+![ChroLens_Portal_Basic_Operations](pic03.png)
+[[ChroLens_Portal Basic Operations]](https://player.vimeo.com/video/1087659485?h=83487a7ea9)
+### ChroLens_Portal Core Function: Turn Your Computer into a "Starter Pack" Launcher!
 
-This program acts as your **PC startup assistant**, especially perfect for situations where you often need to open many things simultaneously.
+This program acts like a **computer launch assistant**, perfect for situations where you often need to open many things simultaneously.
+Busy, and getting busier.
 
-It helps you:
+It can:
 
-* **"One-Click Launch":** Group frequently used programs, files, or shortcuts, and open them all in sequence with just one click.
-* **"Close When Done":** After finishing a set of tasks, you can easily close all related windows at once, keeping your desktop clean and tidy.
-* **"Auto-Memory":** Whether it's your group names, file lists, or opening order, the program remembers everything for your next use.
+* **"One-Click Launch":** Group frequently used programs, documents, or shortcuts. With a single click, open them all in sequence, no need to click one by one.
+* **"Close When Done":** Once a set of tasks is complete, easily close all related windows at once, keeping your desktop clean and tidy.
+* **"Automatic Memory":** Your group names, file lists, and opening order are all remembered for the next time you open the program.
 
-### "Group Launch": Customized "Scenario Modes" Tailored for Your Efficiency
+### "Group Launch": Tailor-Made "Scenario Modes" for Your Efficiency
 
-The most thoughtful design of this program is its ability to let you **"bundle" various files and applications on your computer into distinct "scenario modes" based on different needs**. Whether it's documents, images, videos, music, or even various shortcuts (`.LNK` files), everything can be well-managed. Imagine this as an intelligent shortcut tailored for your digital life:
+The most thoughtful design of this program is its ability to let you **"package" various files and applications on your computer into distinct "scenario modes" based on different needs**. Whether it's documents, images, videos, music, or even various shortcuts (`.LNK` files), everything can be managed properly. Imagine it as a smart hotkey tailored for your digital life:
 
-Project: Word + Reference PDFs + Web Browser
-Designing: Photoshop + Illustrator + Assets Folder
-Gaming: GTA V.. I?? / Fortnite + Discord + Strategy Guide Website
-
----
-### 📄 Licensing Information
-
-The code for this project is released under the **GNU General Public License v3.0 (GPLv3)**. This means you are free to use, study, modify, and distribute this code, but you must comply with all the terms of this license.
-
-**If you wish to use this code for closed-source projects, commercial sale, or require dedicated commercial support services, please contact us to purchase a commercial license.**
-
-For more details, please refer to the [LICENSE file](LICENSE) in the root directory of this project.
+* **When working on a project**: Word + Reference PDFs + Browser.
+* **When designing**: Photoshop + Illustrator + Material files.
+* **When gaming**: Emulator/MapleStory Artale/LOL + Discord + Strategy guide website.
 
 ---
-### 📄  Disclaimer
-This code is provided for general reference and use only. The author assumes no responsibility for any damages incurred from the use or inability to use this code. Users assume all risks associated with the use of this code.
+Planned Development:
+1.  Custom System Scheduler: A simpler and more intuitive way to set up Windows Task Scheduler, possibly adding other personalized functions like timed opening/closing of certain programs.
+
+---
+# ChroLens Project</br>
+## [ChroLens_Portal](https://github.com/Lucienwooo/ChroLens_Portal) - Batch open/close grouped files, hotkey switch multiple windows to always-on-top. </br>
+## [ChroLens_Mimic](https://github.com/Lucienwooo/ChroLens_Mimic) - Macro recording tool, keyboard/mouse simulation, auto-clicker. </br>
+## [ChroLens_Clear](https://github.com/Lucienwooo/ChroLens_Clear) - Automatically close multiple windows/programs. </br>
+</br>
+
+Planned Development:
+1.  Custom System Scheduler: A simpler and more intuitive way to set up Windows Task Scheduler, possibly adding other personalized functions like timed opening/closing of certain programs.
+
+---
+#### 📄 Licensing </br>
+
+The code in this project is released under the GNU General Public License v3.0 (GPLv3). This means you are free to use, study, modify, and distribute this code, but you must abide by all terms of the license. </br>
+If you wish to use this code in a closed-source project, for commercial sale, or require specialized commercial support services, please contact us. </br>
+For full details, please refer to the [LICENSE file](LICENSE) in the project root directory.
 
 ---
 
-### 💸 Support the Creator
+#### 📄 Disclaimer </br>
 
-🧠 **These scripts saved you time—share a bit and donate. Give me money!**
-⌛ **這些程式幫你省下的時間，分一點來抖內吧！給我錢！**
-🪙 **このツールで浮いた時間、ちょっとだけ投げ銭して？お金ちょうだい！**
+This code is provided for general informational purposes and use only. The author assumes no responsibility for any damages incurred from the use or inability to use this code. Use of this code is at your own risk.
 
-👉[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/B0B51FBVA8)
+---
 
-👉Of course, if you have any questions, thoughts, or suggestions, please join my [Discord－ChroLens_](https://discord.gg/72Kbs4WPPn)
+### 💸 Support the Creator 💸
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/B0B51FBVA8)</br>
+ **These scripts saved you time—share a bit and donate. Give me money!**  </br>
+ **これらのツールで浮いた時間、ちょっとだけ投げ銭して？お金ちょうだい！**    </br>
+ **これらのツールで浮いた時間、ちょっとだけ投げ銭して？お金ちょうだい！**  </br>
+
+👉 If you have any questions, ideas, or suggestions, please join my [Discord ChroLens](https://discord.gg/72Kbs4WPPn)

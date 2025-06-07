@@ -256,15 +256,15 @@ for i in range(6):
 group_btn_grid = [
     (8, 0, "啟動", "A", "success-outline", lambda: start_group_opening("A")),
     (8, 1, "啟動", "B", "success-outline", lambda: start_group_opening("B")),
-    (8, 2, "啟動", "E", "success-outline", lambda: start_group_opening("E")),
+    (8, 2, "啟動", "C", "success-outline", lambda: start_group_opening("C")),
     (8, 3, "關閉", "A", "danger-outline", lambda: close_group_windows("A")),
     (8, 4, "關閉", "B", "danger-outline", lambda: close_group_windows("B")),
-    (8, 5, "關閉", "E", "danger-outline", lambda: close_group_windows("E")),
-    (9, 0, "啟動", "C", "success-outline", lambda: start_group_opening("C")),
-    (9, 1, "啟動", "D", "success-outline", lambda: start_group_opening("D")),
+    (8, 5, "關閉", "C", "danger-outline", lambda: close_group_windows("C")),
+    (9, 0, "啟動", "D", "success-outline", lambda: start_group_opening("D")),
+    (9, 1, "啟動", "E", "success-outline", lambda: start_group_opening("E")),
     (9, 2, "啟動", "F", "success-outline", lambda: start_group_opening("F")),
-    (9, 3, "關閉", "C", "danger-outline", lambda: close_group_windows("C")),
-    (9, 4, "關閉", "D", "danger-outline", lambda: close_group_windows("D")),
+    (9, 3, "關閉", "D", "danger-outline", lambda: close_group_windows("D")),
+    (9, 4, "關閉", "E", "danger-outline", lambda: close_group_windows("E")),
     (9, 5, "關閉", "F", "danger-outline", lambda: close_group_windows("F")),
 ]
 for row, col, text, code, bootstyle, cmd in group_btn_grid:
@@ -662,6 +662,21 @@ def log(msg):
         log_text.see("end")
         log_text.config(state="disabled")
 
+def update_group_name(*args):
+    # 更新所有 row2 下拉選單的顯示名稱
+    new_values = [""] + [group_display_names[c].get() for c in group_codes]
+    for _, _, _, _, _, combo1, combo2, combo3, combo4 in checkbox_vars_entries:
+        combo1.config(values=new_values)
+        combo2.config(values=new_values)
+        combo3.config(values=new_values)
+        combo4.config(values=new_values)
+    # 更新所有啟動/關閉按鈕的顯示名稱
+    for code in group_codes:
+        if code in group_buttons:
+            group_buttons[code].config(text=f"啟動 {group_display_names[code].get()}")
+        if code in close_buttons:
+            close_buttons[code].config(text=f"關閉 {group_display_names[code].get()}")
+
 def load_settings():
     if not os.path.exists(SETTINGS_FILE):
         return
@@ -746,21 +761,6 @@ def auto_refresh_window_list():
 # 啟動時呼叫一次
 auto_refresh_window_list()
 
-def update_group_name(*args):
-    # 更新所有 row2 下拉選單的顯示名稱
-    new_values = [""] + [group_display_names[c].get() for c in group_codes]
-    for _, _, _, _, _, combo1, combo2, combo3, combo4 in checkbox_vars_entries:
-        combo1.config(values=new_values)
-        combo2.config(values=new_values)
-        combo3.config(values=new_values)
-        combo4.config(values=new_values)
-    # 更新所有啟動/關閉按鈕的顯示名稱
-    for code in group_codes:
-        if code in group_buttons:
-            group_buttons[code].config(text=f"啟動 {group_display_names[code].get()}")
-        if code in close_buttons:
-            close_buttons[code].config(text=f"關閉 {group_display_names[code].get()}")
-
 # 綁定分組名稱變動時自動更新
 for c in group_codes:
     group_display_names[c].trace_add("write", update_group_name)
@@ -802,7 +802,7 @@ def show_about_dialog():
     frm = tb.Frame(about_win, padding=20)
     frm.pack(fill="both", expand=True)
 
-    tb.Label(frm, text="ChroLens_Portal\n實現分組開啟程式/分組視窗置頂顯示/分組關閉等情境切換功能", font=("Microsoft JhengHei", 11,)).pack(anchor="w", pady=(0, 6))
+    tb.Label(frm, text="ChroLens_Portal\n分組開啟/關閉程式\n分組視窗置頂顯示", font=("Microsoft JhengHei", 11,)).pack(anchor="w", pady=(0, 6))
     link = tk.Label(frm, text="ChroLens_模擬器討論區", font=("Microsoft JhengHei", 10, "underline"), fg="#5865F2", cursor="hand2")
     link.pack(anchor="w")
     link.bind("<Button-1>", lambda e: os.startfile("https://discord.gg/72Kbs4WPPn"))
@@ -888,8 +888,18 @@ for idx, var in enumerate(group_hotkeys):
 
 register_global_hotkeys()
 
-
-
+def open_lnk_target(lnk_path):
+    """解析 .lnk 捷徑檔案，回傳 (目標路徑, 參數字串)"""
+    pythoncom.CoInitialize()
+    shell_link = pythoncom.CoCreateInstance(
+        shell.CLSID_ShellLink, None,
+        pythoncom.CLSCTX_INPROC_SERVER, shell.IID_IShellLink
+    )
+    persist_file = shell_link.QueryInterface(pythoncom.IID_IPersistFile)
+    persist_file.Load(lnk_path)
+    target_path, _ = shell_link.GetPath(shell.SLGP_UNCPRIORITY)
+    arguments = shell_link.GetArguments()
+    return target_path, arguments
 
     # 啟動時呼叫一次
 auto_refresh_window_list()
