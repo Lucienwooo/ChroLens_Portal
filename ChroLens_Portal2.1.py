@@ -751,16 +751,6 @@ def delayed_load_settings():
     app.after(0, lambda: [load_settings(), update_file_list(), update_window_list()])
 threading.Thread(target=delayed_load_settings, daemon=True).start()
 
-def auto_refresh_window_list():
-    # 若主視窗被縮小（iconic），則不刷新
-    if app.state() != "iconic":
-        update_window_list()
-    # 每5秒再呼叫自己
-    app.after(5000, auto_refresh_window_list)
-
-# 啟動時呼叫一次
-auto_refresh_window_list()
-
 # 綁定分組名稱變動時自動更新
 for c in group_codes:
     group_display_names[c].trace_add("write", update_group_name)
@@ -812,7 +802,13 @@ def show_about_dialog():
     tb.Label(frm, text="Creat By Lucienwooo", font=("Microsoft JhengHei", 11,)).pack(anchor="w", pady=(0, 6))
     tb.Button(frm, text="關閉", command=about_win.destroy, width=8, bootstyle=SECONDARY).pack(anchor="e", pady=(16, 0))
 
-# 新增「關於」按鈕
+# --- row 0 新增「刷新視窗」按鈕 ---
+def manual_refresh_window_list():
+    update_window_list()
+refresh_btn = tb.Button(top_row_frame, text="刷新視窗", command=manual_refresh_window_list, bootstyle=SECONDARY, width=8)
+refresh_btn.grid(row=0, column=10, padx=(2,2), sticky="e")
+
+# --- 關於按鈕（原本已存在） ---
 about_btn = tb.Button(top_row_frame, text="關於", command=show_about_dialog, bootstyle=SECONDARY, width=6)
 about_btn.grid(row=0, column=9, padx=(8,2), sticky="e")
 
@@ -901,7 +897,5 @@ def open_lnk_target(lnk_path):
     arguments = shell_link.GetArguments()
     return target_path, arguments
 
-    # 啟動時呼叫一次
-auto_refresh_window_list()
 
 app.mainloop()
