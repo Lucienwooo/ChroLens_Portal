@@ -1,8 +1,6 @@
-### ChroLens_Portal 2.0 
+### ChroLens_Portal 2.2 
 ### 2025/05/26 By Lucienwooo
 ### pyinstaller --onedir --noconsole --add-data "冥想貓貓.ico;." --icon=冥想貓貓.ico --hidden-import=win32timezone ChroLens_Portal2.2.py
-# 1.快捷鍵置頂在沒有設定分組的狀態下，將無法運作
-#
 import os
 import time
 import win32gui
