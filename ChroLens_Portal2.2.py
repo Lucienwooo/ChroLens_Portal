@@ -1,6 +1,6 @@
 ### ChroLens_Portal 2.0 
 ### 2025/05/26 By Lucienwooo
-### pyinstaller --onedir --noconsole --add-data "冥想貓貓.ico;." --icon=冥想貓貓.ico --hidden-import=win32timezone ChroLens_Portal2.1.py
+### pyinstaller --onedir --noconsole --add-data "冥想貓貓.ico;." --icon=冥想貓貓.ico --hidden-import=win32timezone ChroLens_Portal2.2.py
 # 1.快捷鍵置頂在沒有設定分組的狀態下，將無法運作
 #
 import os
@@ -40,7 +40,7 @@ def resource_path(relative_path):
 
 # === 介面區塊 ===
 app = tb.Window(themename="darkly")
-app.title("ChroLens_Portal 2.1")
+app.title("ChroLens_Portal 2.2")
 try:
     ico_path = resource_path("冥想貓貓.ico")
     app.iconbitmap(ico_path)
@@ -230,15 +230,28 @@ for i in range(15):  # 15行
         group_frames[col], textvariable=group_var4,
         values=[""] + [group_display_names[c].get() for c in group_codes], width=combo_width, state="readonly"
     )
-    num_label = tb.Label(group_frames[col], text=str(i+1), width=2)
-    num_label['font'] = num_font
+    num_label = tb.Label(group_frames[col], text=str(i+1), width=2, font=("Microsoft JhengHei", 10, "bold"), background="#444", foreground="#fff", anchor="center", cursor="hand2")
     num_label.grid(row=row, column=0, sticky="w", padx=0)
+    num_label.bind("<Button-1>", lambda e, ent=entry: on_num_label_click(e, ent))
     entry.grid(row=row, column=1, padx=0, pady=1, sticky="ew")
     group_combo1.grid(row=row, column=2, padx=0, pady=1)
     group_combo2.grid(row=row, column=3, padx=0, pady=1)
     group_combo3.grid(row=row, column=4, padx=0, pady=1)
     group_combo4.grid(row=row, column=5, padx=0, pady=1)
     checkbox_vars_entries.append((entry, group_var1, group_var2, group_var3, group_var4, group_combo1, group_combo2, group_combo3, group_combo4))
+    num_btn = tb.Button(
+        group_frames[col],
+        text=str(i+1),
+        width=2,
+        bootstyle="secondary",
+        style="Num.TButton",
+        command=lambda ent=entry: open_entry_file(ent)
+    )
+    num_btn.grid(row=row, column=0, sticky="w", padx=0)
+
+# 先在初始化時建立 style
+style = tb.Style()
+style.configure("Num.TButton", font=("Microsoft JhengHei", 10, "bold"))
 
 # --- row 8~10 動態日誌區塊 ---
 log_text = tb.Text(frm, height=18, width=18, state="disabled", wrap="word", font=tkfont.Font(family="Microsoft JhengHei", size=10))
@@ -656,11 +669,15 @@ def log(msg):
     timestamp = time.strftime("%H:%M:%S")
     full_msg = f"[{timestamp}] {msg}"
     log_history.append(full_msg)
-    if log_text.winfo_exists():
-        log_text.config(state="normal")
-        log_text.insert("end", full_msg + "\n")
-        log_text.see("end")
-        log_text.config(state="disabled")
+    try:
+        if log_text.winfo_exists():
+            log_text.config(state="normal")
+            log_text.insert("end", full_msg + "\n")
+            log_text.see("end")
+            log_text.config(state="disabled")
+    except Exception:
+        # 若視窗已關閉則忽略
+        pass
 
 def update_group_name(*args):
     # 更新所有 row2 下拉選單的顯示名稱
@@ -897,5 +914,33 @@ def open_lnk_target(lnk_path):
     arguments = shell_link.GetArguments()
     return target_path, arguments
 
+def open_entry_file(entry):
+    file_path = entry.get().strip()
+    folder = folder_var.get()
+    if not file_path:
+        log("此欄位無檔案名稱")
+        return
+    full_path = os.path.join(folder, file_path)
+    if not os.path.exists(full_path):
+        log(f"找不到檔案: {full_path}")
+        return
+    try:
+        if full_path.lower().endswith('.lnk'):
+            # 解析捷徑
+            target, args = open_lnk_target(full_path)
+            if target and os.path.exists(target):
+                log(f"開啟捷徑目標: {target} {args}")
+                subprocess.Popen(
+                    f'"{target}" {args}',
+                    shell=True,
+                    creationflags=subprocess.CREATE_NO_WINDOW
+                )
+            else:
+                log(f"無法解析捷徑或目標不存在: {full_path}")
+        else:
+            os.startfile(full_path)
+            log(f"已開啟檔案: {full_path}")
+    except Exception as e:
+        log(f"開啟檔案失敗: {e}")
 
 app.mainloop()

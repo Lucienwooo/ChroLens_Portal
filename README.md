@@ -1,12 +1,7 @@
 # ChroLens_Portal
-## 未來計劃
-* 可能加入定時自動開啟程式並啟動/關閉分組。
----
-
-[English](README_EN.md) | [日本語](README_JA.md)
 
 ---
-![ChroLens_Portal_Basic_Operations](pic2.1.png)
+![ChroLens_Portal_Basic_Operations](pic2.2.png)
 [[ChroLens_Portal_基本操作]](https://player.vimeo.com/video/1087659485?h=83487a7ea9)
 ### ChroLens_Portal 核心功能：讓你的電腦也變「懶人包」啟動器！
 
@@ -52,3 +47,42 @@
 
 👉如果你有任何問題、想法或建議，請加入我的 [Discord ChroLens](https://discord.gg/72Kbs4WPPn)
 
+---
+
+### ChroLens_Portal コア機能：あなたのPCも「スターターパック」ランチャーに！
+
+このプログラムは**PC起動アシスタント**のようなもので、同時に多くのものを開く必要がある現代の状況に最適です。
+忙しい、さらに忙しくなる
+
+このプログラムでできること：
+
+* **「ワンクリック起動」：** よく使うプログラム、ドキュメント、またはショートカットをグループ化し、ワンクリックですべて順番に開けます。一つずつクリックする必要はありません。
+* **「使い終わったら閉じる」：** 一連のタスクが完了したら、関連するすべてのウィンドウを一度に簡単に閉じ、デスクトップをきれいに保ちます。
+* **「自動記憶」：** グループ名、ファイルリスト、起動順序はすべて、次回プログラムを開いたときに記憶されます。
+
+### 「グループ起動」：あなたの効率のためにオーダーメイドされた専用「シナリオモード」
+
+このプログラムの最もきめ細やかな設計は、PC内のさまざまなファイルやアプリケーションを、**異なるニーズに応じて「シナリオモード」として「パッケージ化」できる**点です。ドキュメント、画像、ビデオ、音楽、さらにはさまざまなショートカット（`.LNK`ファイル）まで、すべて適切に管理できます。これは、あなたのデジタルライフのためにオーダーメイドされたスマートなホットキーのようなものだと想像してください：
+
+* **プロジェクト作業時**：Word + 参照PDF + ブラウザ。
+* **デザイン作業時**：Photoshop + Illustrator + 素材ファイル。
+* **ゲームプレイ時**：エミュレーター/MapleStory Artale/LOL + Discord + 攻略サイト。
+---
+### ChroLens_Portal Core Function: Turn Your Computer into a "Starter Pack" Launcher!
+
+This program acts like a **computer launch assistant**, perfect for situations where you often need to open many things simultaneously.
+Busy, and getting busier.
+
+It can:
+
+* **"One-Click Launch":** Group frequently used programs, documents, or shortcuts. With a single click, open them all in sequence, no need to click one by one.
+* **"Close When Done":** Once a set of tasks is complete, easily close all related windows at once, keeping your desktop clean and tidy.
+* **"Automatic Memory":** Your group names, file lists, and opening order are all remembered for the next time you open the program.
+
+### "Group Launch": Tailor-Made "Scenario Modes" for Your Efficiency
+
+The most thoughtful design of this program is its ability to let you **"package" various files and applications on your computer into distinct "scenario modes" based on different needs**. Whether it's documents, images, videos, music, or even various shortcuts (`.LNK` files), everything can be managed properly. Imagine it as a smart hotkey tailored for your digital life:
+
+* **When working on a project**: Word + Reference PDFs + Browser.
+* **When designing**: Photoshop + Illustrator + Material files.
+* **When gaming**: Emulator/MapleStory Artale/LOL + Discord + Strategy guide website.
