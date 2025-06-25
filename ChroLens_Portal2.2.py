@@ -172,7 +172,7 @@ desc_label.grid(row=0, column=0, padx=2, pady=2, sticky="ew")
 for idx, code in enumerate(group_codes):
     frame = tb.Frame(second_row_frame, borderwidth=2, relief="groove")
     frame.grid(row=0, column=idx+1, padx=2, pady=2, sticky="ew")
-    show_label = tb.Label(frame, text=f"{group_display_names[code].get()} 組", width=6, font=show_label_font)
+    show_label = tb.Label(frame, text=f"{group_display_names[code].get()} ", width=6, font=show_label_font)
     show_label.pack(side="left")
     hotkey_entry = tb.Entry(frame, textvariable=group_hotkeys[idx], width=8, state="readonly", justify="center", font=show_label_font)
     hotkey_entry.pack(side="left", padx=(2,5))
@@ -184,7 +184,7 @@ for idx, code in enumerate(group_codes):
 
 def update_show_labels(*args):
     for idx, code in enumerate(group_codes):
-        show_label_frames[idx][0].config(text=f"{group_display_names[code].get()} 組")  
+        show_label_frames[idx][0].config(text=f"{group_display_names[code].get()} ")  
 for c in group_codes:
     group_display_names[c].trace_add("write", update_show_labels)
 
