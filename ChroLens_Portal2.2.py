@@ -680,11 +680,22 @@ def log(msg):
 def update_group_name(*args):
     # 更新所有 row2 下拉選單的顯示名稱
     new_values = [""] + [group_display_names[c].get() for c in group_codes]
-    for _, _, _, _, _, combo1, combo2, combo3, combo4 in checkbox_vars_entries:
+    for _, var1, var2, var3, var4, combo1, combo2, combo3, combo4 in checkbox_vars_entries:
+        # 暫存原本的值
+        v1, v2, v3, v4 = var1.get(), var2.get(), var3.get(), var4.get()
         combo1.config(values=new_values)
         combo2.config(values=new_values)
         combo3.config(values=new_values)
         combo4.config(values=new_values)
+        # 如果原值還在新 values 裡，還原
+        if v1 in new_values:
+            var1.set(v1)
+        if v2 in new_values:
+            var2.set(v2)
+        if v3 in new_values:
+            var3.set(v3)
+        if v4 in new_values:
+            var4.set(v4)
     # 更新所有啟動/關閉按鈕的顯示名稱
     for code in group_codes:
         if code in group_buttons:
