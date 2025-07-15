@@ -883,7 +883,7 @@ def focus_next_in_group(group_code):
     try:
         if win32gui.IsIconic(hwnd):
             win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-        keyboard.press_and_release('alt')  # 模擬按一下 Alt
+        # keyboard.press_and_release('alt')  # ←建議移除
         win32gui.BringWindowToTop(hwnd)
         win32gui.SetForegroundWindow(hwnd)
         log(f"切換到分組 {group_display_names[group_code].get()} 的視窗：{win32gui.GetWindowText(hwnd)}")
