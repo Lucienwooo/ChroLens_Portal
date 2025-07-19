@@ -502,17 +502,20 @@ for entry, *_ in checkbox_vars_entries:
 retreated_hwnds = set()
 
 def set_group_windows_topmost(group_code):
+    """將指定分組的所有視窗設為最上層，其他視窗全部退到下層"""
     global retreated_hwnds
     files = get_group_files(group_code)
     if not files:
         log(f"分組 {group_display_names[group_code].get()} 沒有檔案")
         return
 
+    # 取得分組視窗標題關鍵字
     target_titles = [os.path.splitext(os.path.basename(f))[0].lower() for f in files if f]
     my_hwnd = app.winfo_id()
     group_hwnds = set()
     parent_hwnds = set()
 
+    # 找出分組視窗
     def enum_handler(hwnd, _):
         if not win32gui.IsWindowVisible(hwnd):
             return
@@ -529,6 +532,7 @@ def set_group_windows_topmost(group_code):
                 parent_hwnds.add(parent)
     win32gui.EnumWindows(enum_handler, None)
 
+    # 先將所有其他視窗退到底層
     other_hwnd_list = []
     def enum_others(hwnd, _):
         if not win32gui.IsWindowVisible(hwnd):
@@ -541,9 +545,8 @@ def set_group_windows_topmost(group_code):
         other_hwnd_list.append(hwnd)
     win32gui.EnumWindows(enum_others, None)
 
-    # 只對新出現的視窗退後一次
-    new_to_retreated = [hwnd for hwnd in other_hwnd_list if hwnd not in retreated_hwnds]
-    for hwnd in new_to_retreated:
+    # 退後所有非分組視窗
+    for hwnd in other_hwnd_list:
         try:
             win32gui.SetWindowPos(
                 hwnd, win32con.HWND_BOTTOM, 0, 0, 0, 0,
@@ -553,7 +556,22 @@ def set_group_windows_topmost(group_code):
         except Exception:
             pass
 
-    log(f"已將分組 {group_display_names[group_code].get()} 以外的視窗全部退到最下層（本次退後 {len(new_to_retreated)} 個）")
+    # 置頂所有分組視窗
+    for hwnd in group_hwnds:
+        try:
+            win32gui.SetWindowPos(
+                hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0,
+                win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_SHOWWINDOW
+            )
+            # 再設回非最上層，避免總是浮動
+            win32gui.SetWindowPos(
+                hwnd, win32con.HWND_NOTOPMOST, 0, 0, 0, 0,
+                win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_SHOWWINDOW
+            )
+        except Exception as e:
+            log(f"置頂視窗失敗: {e}")
+
+    log(f"已將分組 {group_display_names[group_code].get()} 的視窗全部置頂，其他視窗退到底層")
 
 
 def start_group_opening(group_code):
@@ -883,31 +901,55 @@ def focus_next_in_group(group_code):
     try:
         if win32gui.IsIconic(hwnd):
             win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-        # keyboard.press_and_release('alt')  # ←建議移除
+        # 只做一次 BringWindowToTop/SetWindowPos
         win32gui.BringWindowToTop(hwnd)
-        win32gui.SetForegroundWindow(hwnd)
+        win32gui.SetWindowPos(
+            hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0,
+            win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_SHOWWINDOW
+        )
+        win32gui.SetWindowPos(
+            hwnd, win32con.HWND_NOTOPMOST, 0, 0, 0, 0,
+            win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_SHOWWINDOW
+        )
+        try:
+            win32gui.SetForegroundWindow(hwnd)
+        except Exception:
+            pass  # 忽略 SetForegroundWindow 失敗
+        set_group_windows_topmost(group_code)
         log(f"切換到分組 {group_display_names[group_code].get()} 的視窗：{win32gui.GetWindowText(hwnd)}")
     except Exception as e:
         log(f"切換視窗失敗: {e}")
     group_focus_indexes[group_code] = (idx + 1) % len(hwnds)
 
+# --- 修正版：避免重複註冊熱鍵 ---
+hotkey_handlers = {}
+
 def register_global_hotkeys():
+    # 先移除所有舊的 handler
+    for code in group_codes:
+        handler = hotkey_handlers.get(code)
+        if handler:
+            try:
+                keyboard.remove_hotkey(handler)
+            except Exception:
+                pass
+            hotkey_handlers[code] = None
+    # 重新註冊
     for idx, code in enumerate(group_codes):
         hotkey = group_hotkeys[idx].get()
-        try:
-            keyboard.remove_hotkey(f"group_{code}")
-        except Exception:
-            pass
-        keyboard.add_hotkey(
+        handler = keyboard.add_hotkey(
             hotkey,
             functools.partial(focus_next_in_group, code),
             suppress=False,
             trigger_on_release=False
         )
+        hotkey_handlers[code] = handler
 
+# 只在熱鍵內容變動時註冊一次
 for idx, var in enumerate(group_hotkeys):
     var.trace_add("write", lambda *a, i=idx: register_global_hotkeys())
 
+# 啟動時註冊一次
 register_global_hotkeys()
 
 def open_lnk_target(lnk_path):
