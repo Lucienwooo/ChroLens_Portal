@@ -1,0 +1,9 @@
+"""ChroLens_Portal 2.3 依賴套件
+
+執行以下指令安裝：
+pip install -r requirements.txt
+"""
+
+ttkbootstrap>=1.10.1
+pywin32>=305
+keyboard>=0.13.5

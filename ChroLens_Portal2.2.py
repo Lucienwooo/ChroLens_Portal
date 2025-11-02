@@ -172,8 +172,11 @@ desc_label.grid(row=0, column=0, padx=2, pady=2, sticky="ew")
 for idx, code in enumerate(group_codes):
     frame = tb.Frame(second_row_frame, borderwidth=2, relief="groove")
     frame.grid(row=0, column=idx+1, padx=2, pady=2, sticky="ew")
-    show_label = tb.Label(frame, text=f"{group_display_names[code].get()} ", width=6, font=show_label_font)
+    # 將 Label 改為可點擊的按鈕樣式，但保持 Label 外觀
+    show_label = tb.Label(frame, text=f"{group_display_names[code].get()} ", width=6, font=show_label_font, cursor="hand2")
     show_label.pack(side="left")
+    # 綁定點擊事件，觸發對應分組的快捷鍵功能
+    show_label.bind("<Button-1>", lambda e, c=code: focus_next_in_group(c))
     hotkey_entry = tb.Entry(frame, textvariable=group_hotkeys[idx], width=8, state="readonly", justify="center", font=show_label_font)
     hotkey_entry.pack(side="left", padx=(2,5))
     def make_on_key(idx):
@@ -502,18 +505,16 @@ for entry, *_ in checkbox_vars_entries:
 retreated_hwnds = set()
 
 def set_group_windows_topmost(group_code):
-    """將指定分組的所有視窗設為最上層，其他視窗全部退到下層"""
+    """將指定分組的所有視窗設為最上層（優化版，減少閃爍）"""
     global retreated_hwnds
     files = get_group_files(group_code)
     if not files:
-        log(f"分組 {group_display_names[group_code].get()} 沒有檔案")
         return
 
     # 取得分組視窗標題關鍵字
     target_titles = [os.path.splitext(os.path.basename(f))[0].lower() for f in files if f]
     my_hwnd = app.winfo_id()
-    group_hwnds = set()
-    parent_hwnds = set()
+    group_hwnds = []
 
     # 找出分組視窗
     def enum_handler(hwnd, _):
@@ -526,52 +527,24 @@ def set_group_windows_topmost(group_code):
         if not window_text_lower:
             return
         if any(title and title in window_text_lower for title in target_titles):
-            group_hwnds.add(hwnd)
-            parent = win32gui.GetParent(hwnd)
-            if parent and parent != 0 and parent != hwnd:
-                parent_hwnds.add(parent)
+            group_hwnds.append(hwnd)
     win32gui.EnumWindows(enum_handler, None)
 
-    # 先將所有其他視窗退到底層
-    other_hwnd_list = []
-    def enum_others(hwnd, _):
-        if not win32gui.IsWindowVisible(hwnd):
-            return
-        if hwnd == my_hwnd or hwnd in group_hwnds or hwnd in parent_hwnds:
-            return
-        for g_hwnd in group_hwnds:
-            if win32gui.IsChild(g_hwnd, hwnd):
-                return
-        other_hwnd_list.append(hwnd)
-    win32gui.EnumWindows(enum_others, None)
+    if not group_hwnds:
+        return
 
-    # 退後所有非分組視窗
-    for hwnd in other_hwnd_list:
+    # 只處理分組視窗，不動其他視窗（避免閃爍）
+    # 使用 HWND_TOP 而非 HWND_TOPMOST 以避免總是置頂
+    for hwnd in group_hwnds:
         try:
+            # 一步到位：直接置頂並啟動
             win32gui.SetWindowPos(
-                hwnd, win32con.HWND_BOTTOM, 0, 0, 0, 0,
+                hwnd, win32con.HWND_TOP, 0, 0, 0, 0,
                 win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_NOACTIVATE
             )
-            retreated_hwnds.add(hwnd)
         except Exception:
             pass
 
-    # 置頂所有分組視窗
-    for hwnd in group_hwnds:
-        try:
-            win32gui.SetWindowPos(
-                hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0,
-                win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_SHOWWINDOW
-            )
-            # 再設回非最上層，避免總是浮動
-            win32gui.SetWindowPos(
-                hwnd, win32con.HWND_NOTOPMOST, 0, 0, 0, 0,
-                win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_SHOWWINDOW
-            )
-        except Exception as e:
-            log(f"置頂視窗失敗: {e}")
-
-    log(f"已將分組 {group_display_names[group_code].get()} 的視窗全部置頂，其他視窗退到底層")
 
 
 def start_group_opening(group_code):
@@ -891,6 +864,7 @@ def update_group_hwnd_list(group_code):
     group_hwnd_lists[group_code] = hwnds
 
 def focus_next_in_group(group_code):
+    """切換到分組中的下一個視窗（優化版）"""
     update_group_hwnd_list(group_code)
     hwnds = group_hwnd_lists[group_code]
     if not hwnds:
@@ -899,27 +873,29 @@ def focus_next_in_group(group_code):
     idx = group_focus_indexes[group_code]
     hwnd = hwnds[idx % len(hwnds)]
     try:
+        # 如果視窗最小化，先還原
         if win32gui.IsIconic(hwnd):
             win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-        # 只做一次 BringWindowToTop/SetWindowPos
-        win32gui.BringWindowToTop(hwnd)
+        
+        # 簡化的置頂邏輯：只做必要的操作
         win32gui.SetWindowPos(
-            hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0,
-            win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_SHOWWINDOW
+            hwnd, win32con.HWND_TOP, 0, 0, 0, 0,
+            win32con.SWP_NOMOVE | win32con.SWP_NOSIZE
         )
-        win32gui.SetWindowPos(
-            hwnd, win32con.HWND_NOTOPMOST, 0, 0, 0, 0,
-            win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_SHOWWINDOW
-        )
+        
+        # 嘗試設為前景視窗（若失敗也無妨）
         try:
             win32gui.SetForegroundWindow(hwnd)
         except Exception:
-            pass  # 忽略 SetForegroundWindow 失敗
-        set_group_windows_topmost(group_code)
-        log(f"切換到分組 {group_display_names[group_code].get()} 的視窗：{win32gui.GetWindowText(hwnd)}")
+            pass
+        
+        window_title = win32gui.GetWindowText(hwnd)
+        log(f"切換到分組 {group_display_names[group_code].get()} 的視窗：{window_title}")
     except Exception as e:
         log(f"切換視窗失敗: {e}")
+    
     group_focus_indexes[group_code] = (idx + 1) % len(hwnds)
+
 
 # --- 修正版：避免重複註冊熱鍵 ---
 hotkey_handlers = {}
