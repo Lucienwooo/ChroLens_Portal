@@ -1,6 +1,8 @@
-### ChroLens_Portal 2.2 
-### 2025/05/26 By Lucienwooo
-### pyinstaller --onedir --noconsole --add-data "冥想貓貓.ico;." --icon=冥想貓貓.ico --hidden-import=win32timezone ChroLens_Portal2.2.py
+### ChroLens_Portal 2.3 
+### 2025/11/12 By Lucienwooo
+### 更新：修復分組置頂功能，所有視窗同時置頂
+### Start-Process python -ArgumentList "c:/Users/Lucien/Documents/GitHub/ChroLens_Portal/ChroLens_Portal2.3.py" -Verb RunAs
+### pyinstaller --onedir --noconsole --uac-admin --add-data "冥想貓貓.ico;." --icon=冥想貓貓.ico --hidden-import=win32timezone ChroLens_Portal2.3.py
 import os
 import time
 import win32gui
@@ -21,12 +23,11 @@ import functools
 import atexit
 import win32process
 
-# row 0：頂部工具列（資料夾選擇、間隔秒數、分組名稱編輯、存檔按鈕）
-# row 1：分組置頂顯示切換區（顯示分組名稱與快捷鍵）
-# row 2：分組檔案列（15組分組欄位，分3欄顯示，每行3個分組下拉選單）
-# row 8：動態日誌、啟動按鈕..、關閉按鈕..
-# row 9：動態日誌、啟動按鈕..、關閉按鈕..
-# row 10：動態日誌、檔案名稱列表、視窗名稱列表
+# === 介面配置說明 ===
+# row 0：頂部工具列（資料夾選擇、間隔秒數、分組名稱編輯、存檔、刷新視窗、關於按鈕）
+# row 1：分組置頂顯示切換區（顯示分組名稱與快捷鍵，可點擊切換）
+# row 2：分組檔案列（15組分組欄位，分3欄顯示，每行顯示編號、檔案名稱、4個分組下拉選單）
+# row 8~10：左側為動態日誌（3行合併），右上為啟動/關閉分組按鈕（row 8~9），右下為檔案名稱與視窗名稱列表（row 10）
 
 LAST_PATH_FILE = "last_path.txt"
 SETTINGS_FILE = "chrolens_portal.json"
@@ -38,7 +39,7 @@ def resource_path(relative_path):
 
 # === 介面區塊 ===
 app = tb.Window(themename="darkly")
-app.title("ChroLens_Portal 2.2")
+app.title("ChroLens_Portal 2.3")
 try:
     ico_path = resource_path("冥想貓貓.ico")
     app.iconbitmap(ico_path)
@@ -864,37 +865,62 @@ def update_group_hwnd_list(group_code):
     group_hwnd_lists[group_code] = hwnds
 
 def focus_next_in_group(group_code):
-    """切換到分組中的下一個視窗（優化版）"""
+    """批次同時置頂分組中的所有視窗（方案3：使用TOPMOST）"""
     update_group_hwnd_list(group_code)
     hwnds = group_hwnd_lists[group_code]
     if not hwnds:
         log(f"分組 {group_display_names[group_code].get()} 沒有視窗")
         return
-    idx = group_focus_indexes[group_code]
-    hwnd = hwnds[idx % len(hwnds)]
-    try:
-        # 如果視窗最小化，先還原
-        if win32gui.IsIconic(hwnd):
-            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-        
-        # 簡化的置頂邏輯：只做必要的操作
-        win32gui.SetWindowPos(
-            hwnd, win32con.HWND_TOP, 0, 0, 0, 0,
-            win32con.SWP_NOMOVE | win32con.SWP_NOSIZE
-        )
-        
-        # 嘗試設為前景視窗（若失敗也無妨）
-        try:
-            win32gui.SetForegroundWindow(hwnd)
-        except Exception:
-            pass
-        
-        window_title = win32gui.GetWindowText(hwnd)
-        log(f"切換到分組 {group_display_names[group_code].get()} 的視窗：{window_title}")
-    except Exception as e:
-        log(f"切換視窗失敗: {e}")
     
-    group_focus_indexes[group_code] = (idx + 1) % len(hwnds)
+    log(f"開始置頂分組 {group_display_names[group_code].get()} 的 {len(hwnds)} 個視窗")
+    
+    def topmost_windows():
+        """在背景執行緒中批次置頂視窗"""
+        try:
+            # 第一步：還原所有最小化的視窗
+            for hwnd in hwnds:
+                try:
+                    if win32gui.IsIconic(hwnd):
+                        win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+                except Exception:
+                    pass
+            
+            # 第二步：將所有視窗設為永久置頂（TOPMOST）- 這樣會同時置頂
+            for hwnd in hwnds:
+                try:
+                    win32gui.SetWindowPos(
+                        hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0,
+                        win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_NOACTIVATE
+                    )
+                except Exception:
+                    pass
+            
+            # 短暫延遲確保置頂完成
+            time.sleep(0.05)
+            
+            # 第三步：立即取消永久置頂狀態（視窗會保持在最上層，但不會永久置頂）
+            for hwnd in hwnds:
+                try:
+                    win32gui.SetWindowPos(
+                        hwnd, win32con.HWND_NOTOPMOST, 0, 0, 0, 0,
+                        win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_NOACTIVATE
+                    )
+                except Exception:
+                    pass
+            
+            # 第四步：將第一個視窗設為前景（使其獲得焦點）
+            if hwnds:
+                try:
+                    win32gui.SetForegroundWindow(hwnds[0])
+                except Exception:
+                    pass
+            
+            app.after(0, lambda: log(f"已完成置頂分組 {group_display_names[group_code].get()} 的所有 {len(hwnds)} 個視窗"))
+        except Exception as e:
+            app.after(0, lambda msg=f"置頂處理異常: {e}": log(msg))
+    
+    # 在背景執行緒中執行置頂操作
+    threading.Thread(target=topmost_windows, daemon=True).start()
 
 
 # --- 修正版：避免重複註冊熱鍵 ---
