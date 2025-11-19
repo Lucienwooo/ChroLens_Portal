@@ -24,8 +24,41 @@ import atexit
 import win32process
 from update_manager import UpdateManager
 from update_dialog import UpdateDialog, NoUpdateDialog
+import ctypes
 
 SETTINGS_FILE = "chrolens_portal.json"
+
+# === DPI 感知設定 ===
+def set_dpi_awareness():
+    """設定 DPI 感知，支援高解析度和縮放顯示器"""
+    try:
+        # Windows 10 / 11 - Per Monitor DPI Awareness V2
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+    except:
+        try:
+            # Windows 8.1 / 10 - Per Monitor DPI Awareness
+            ctypes.windll.shcore.SetProcessDpiAwareness(1)
+        except:
+            try:
+                # Windows Vista / 7 / 8 - System DPI Awareness
+                ctypes.windll.user32.SetProcessDPIAware()
+            except:
+                pass
+
+def get_dpi_scale():
+    """取得當前 DPI 縮放比例"""
+    try:
+        # 獲取主螢幕的 DPI
+        hdc = ctypes.windll.user32.GetDC(0)
+        dpi = ctypes.windll.gdi32.GetDeviceCaps(hdc, 88)  # LOGPIXELSX
+        ctypes.windll.user32.ReleaseDC(0, hdc)
+        scale = dpi / 96.0  # 96 DPI 是 100% 縮放
+        return scale
+    except:
+        return 1.0
+
+# 在任何 GUI 建立之前設定 DPI 感知
+set_dpi_awareness()
 
 def resource_path(relative_path):
     if hasattr(sys, '_MEIPASS'):
@@ -81,14 +114,55 @@ try:
 except Exception as e:
     print(f"無法設定 icon: {e}")
 
-# 在這裡建立字型物件
-num_font = tkfont.Font(family="Microsoft JhengHei", size=10, weight="bold")
+# 取得 DPI 縮放比例並計算自適應尺寸
+dpi_scale = get_dpi_scale()
+print(f"檢測到 DPI 縮放: {dpi_scale:.2f}x ({int(dpi_scale * 100)}%)")
 
-# 主視窗寬度（優化為更緊湊的大小）
-app.geometry("1200x720")  # 減少高度
+# 根據 DPI 縮放調整字型大小和間距
+base_font_size = 10
+if dpi_scale >= 1.5:
+    scaled_font_size = 9  # 150% 時使用 9pt，保持清晰
+elif dpi_scale >= 1.25:
+    scaled_font_size = 9  # 125% 時使用 9pt
+else:
+    scaled_font_size = 10  # 100% 時使用標準 10pt
+num_font = tkfont.Font(family="Microsoft JhengHei", size=scaled_font_size, weight="bold")
+
+# 根據 DPI 縮放調整視窗大小和 padding
+base_width = 1400  # 增加基礎寬度，確保能完整顯示 3 欄 15 格分組
+base_height = 750  # 略微增加高度
+
+# 針對高 DPI 的自適應調整策略
+if dpi_scale >= 1.5:  # 150% 或更高
+    # 高 DPI 時保持較大的視窗，避免內容被壓縮
+    scaled_width = int(base_width * 0.95)  # 只略微縮小
+    scaled_height = int(base_height * 0.95)
+elif dpi_scale >= 1.25:  # 125% 縮放
+    scaled_width = int(base_width * 0.92)
+    scaled_height = int(base_height * 0.92)
+else:  # 100% 或更低
+    scaled_width = base_width
+    scaled_height = base_height
+
+# 設定最小視窗大小以確保所有元件可見（確保能顯示完整 3 欄）
+min_width = 1300  # 增加最小寬度以確保 3 欄完整顯示
+min_height = 680  # 增加最小高度
+scaled_width = max(min_width, scaled_width)
+scaled_height = max(min_height, scaled_height)
+
+app.geometry(f"{scaled_width}x{scaled_height}")
+app.minsize(min_width, min_height)  # 設定最小視窗大小
+
+# 根據 DPI 調整 padding（高 DPI 時使用更合適的 padding）
+if dpi_scale >= 1.5:
+    adaptive_padding = 2  # 150% 時仍使用適當的 padding，避免過於擁擠
+elif dpi_scale >= 1.25:
+    adaptive_padding = 2  # 125% 時使用標準 padding
+else:
+    adaptive_padding = 2  # 100% 時使用標準 padding
 
 # --- 主 Frame ---
-frm = tb.Frame(app, padding=2)
+frm = tb.Frame(app, padding=adaptive_padding)
 frm.pack(fill="both", expand=True)
 
 # 設定響應式行配置
@@ -119,11 +193,14 @@ schedule_tasks = []
 window_layouts = {}
 
 # --- row 0：頂部工具列 ---
-top_row_frame = tb.Frame(frm, padding=2)
-top_row_frame.grid(row=0, column=0, columnspan=8, sticky="ew", pady=(2, 2))
-top_row_frame.grid_columnconfigure(0, weight=0)
-top_row_frame.grid_columnconfigure(1, weight=0)
-top_row_frame.grid_columnconfigure(2, weight=0)
+top_row_frame = tb.Frame(frm, padding=adaptive_padding)
+top_row_frame.grid(row=0, column=0, columnspan=8, sticky="ew", pady=(adaptive_padding, adaptive_padding))
+# 讓工具列可以自動擴展，避免按鈕被壓迫
+for col_idx in range(13):  # 涵蓋所有按鈕欄位
+    if col_idx in [0, 1]:  # 路徑和間隔區域可以擴展
+        top_row_frame.grid_columnconfigure(col_idx, weight=1)
+    else:  # 其他按鈕區域固定大小
+        top_row_frame.grid_columnconfigure(col_idx, weight=0)
 
 folder_var = tb.StringVar(value="")
 interval_var = tb.StringVar(value="4")
@@ -135,15 +212,15 @@ def choose_folder():
         if not mini_mode_active:
             update_file_list()  # 只在非 mini 模式下刷新檔案列表
 
-folder_frame = tb.Frame(top_row_frame, padding=(2,2))
+folder_frame = tb.Frame(top_row_frame, padding=(adaptive_padding, adaptive_padding))
 folder_frame.grid(row=0, column=0, sticky="w", padx=(0, 4))
-tb.Entry(folder_frame, textvariable=folder_var, width=25).grid(row=0, column=0, padx=(2,2), sticky="ew")
-tb.Button(folder_frame, text="選擇開啟路徑", command=lambda: choose_folder(), bootstyle=SECONDARY).grid(row=0, column=1, padx=(2,0), sticky="ew")
+tb.Entry(folder_frame, textvariable=folder_var, width=25).grid(row=0, column=0, padx=(adaptive_padding, adaptive_padding), sticky="ew")
+tb.Button(folder_frame, text="選擇開啟路徑", command=lambda: choose_folder(), bootstyle=SECONDARY).grid(row=0, column=1, padx=(adaptive_padding, 0), sticky="ew")
 
-interval_frame = tb.Frame(top_row_frame, padding=(2,2))
+interval_frame = tb.Frame(top_row_frame, padding=(adaptive_padding, adaptive_padding))
 interval_frame.grid(row=0, column=1, sticky="w", padx=(0, 4))
 tb.Label(interval_frame, text="間隔秒數:").grid(row=0, column=0, sticky="w")
-tb.Entry(interval_frame, textvariable=interval_var, width=3).grid(row=0, column=1, padx=(2,0), sticky="w")
+tb.Entry(interval_frame, textvariable=interval_var, width=3).grid(row=0, column=1, padx=(adaptive_padding, 0), sticky="w")
 
 # === 視窗佈局記憶功能 (FancyZones) ===
 def capture_window_layout(group_code):
@@ -281,8 +358,8 @@ def manual_save():
     log(f"已手動儲存設定檔，共捕獲 {total_captured} 個新視窗佈局")
     log("=" * 50)
 
-save_btn = tb.Button(top_row_frame, text="存檔", command=manual_save, bootstyle="info", width=5)
-save_btn.grid(row=0, column=5, padx=(8,2), sticky="e")
+save_btn = tb.Button(top_row_frame, text="存檔", command=manual_save, bootstyle="info", width=6)
+save_btn.grid(row=0, column=5, padx=(4,2), sticky="e")
 
 # --- 新增：分組名稱修改區 ---
 group_name_edit_var = tk.StringVar()
@@ -376,15 +453,15 @@ mini_restore_label.bind("<Button-1>", lambda e: None)
 # mini_restore_btn.grid(row=0, column=0, padx=2, pady=2, sticky="ew")
 
 for idx, code in enumerate(group_codes):
-    frame = tb.Frame(second_row_frame, borderwidth=2, relief="groove")
-    frame.grid(row=0, column=idx+1, padx=2, pady=2, sticky="ew")
+    frame = tb.Frame(second_row_frame, borderwidth=max(1, int(2 / dpi_scale)), relief="groove")
+    frame.grid(row=0, column=idx+1, padx=adaptive_padding, pady=adaptive_padding, sticky="ew")
     # 將 Label 改為可點擊的按鈕樣式，但保持 Label 外觀
     show_label = tb.Label(frame, text=f"{group_display_names[code].get()} ", width=6, font=show_label_font, cursor="hand2")
-    show_label.pack(side="left")
+    show_label.pack(side="left", padx=(adaptive_padding, 0))
     # 綁定點擊事件，觸發對應分組的快捷鍵功能
     show_label.bind("<Button-1>", lambda e, c=code: focus_next_in_group(c))
     hotkey_entry = tb.Entry(frame, textvariable=group_hotkeys[idx], width=8, state="readonly", justify="center", font=show_label_font)
-    hotkey_entry.pack(side="left", padx=(2,5))
+    hotkey_entry.pack(side="left", padx=(adaptive_padding, int(5 / dpi_scale)))
     def make_on_key(idx):
         return lambda event, i=idx: on_hotkey_entry_key(event, i)
     hotkey_entry.bind("<Key>", make_on_key(idx))
@@ -428,12 +505,14 @@ def on_num_label_click(event, entry):
 # --- row 2：分組檔案列 ---
 group_frames = []
 for col in range(3):
-    group_frame = tb.Frame(frm, borderwidth=1, relief="solid", padding=1)
-    group_frame.grid(row=2, column=col, padx=2, pady=1, sticky="nsew")
-    frm.grid_columnconfigure(col, weight=1)
-    group_frame.grid_columnconfigure(1, weight=2)  # 讓檔案名稱欄自動展開且多吃空間
-    for i in range(2, 6):  # combo欄不自動展開
-        group_frame.grid_columnconfigure(i, weight=0)
+    group_frame = tb.Frame(frm, borderwidth=max(1, int(1 / dpi_scale)), relief="solid", padding=adaptive_padding)
+    group_frame.grid(row=2, column=col, padx=adaptive_padding, pady=adaptive_padding, sticky="nsew")
+    frm.grid_columnconfigure(col, weight=1, uniform="group_col")  # 使用 uniform 確保三欄等寬
+    # 配置內部欄位 - 讓所有 entry 欄位等寬
+    group_frame.grid_columnconfigure(0, weight=0, minsize=30)  # 編號欄固定寬度
+    group_frame.grid_columnconfigure(1, weight=1, minsize=150)  # 檔案名稱欄可擴展，最小寬度 150
+    for i in range(2, 6):  # combo 欄位固定寬度
+        group_frame.grid_columnconfigure(i, weight=0, minsize=35)
     group_frames.append(group_frame)
 
 combo_width = 3  # 原本是4，縮短1/3
@@ -443,8 +522,8 @@ checkbox_vars_entries = []
 for i in range(15):  # 15行
     row = i % 5
     col = i // 5
-    entry = tb.Entry(group_frames[col], state="readonly", width=10)
-    entry.grid(row=row, column=1, padx=0, pady=1, sticky="ew")  # sticky="ew" 讓欄位自動展開
+    # 移除固定寬度，讓 entry 自動根據 grid_columnconfigure 配置調整
+    entry = tb.Entry(group_frames[col], state="readonly")
     group_var1 = tk.StringVar(value="")
     group_var2 = tk.StringVar(value="")
     group_var3 = tk.StringVar(value="")
@@ -465,14 +544,17 @@ for i in range(15):  # 15行
         group_frames[col], textvariable=group_var4,
         values=[""] + [group_display_names[c].get() for c in group_codes], width=combo_width, state="readonly"
     )
-    num_label = tb.Label(group_frames[col], text=str(i+1), width=2, font=("Microsoft JhengHei", 10, "bold"), background="#444", foreground="#fff", anchor="center", cursor="hand2")
-    num_label.grid(row=row, column=0, sticky="w", padx=0)
+    # 編號標籤
+    num_label = tb.Label(group_frames[col], text=str(i+1), width=2, font=("Microsoft JhengHei", scaled_font_size, "bold"), background="#444", foreground="#fff", anchor="center", cursor="hand2")
+    num_label.grid(row=row, column=0, sticky="ew", padx=0)
     num_label.bind("<Button-1>", lambda e, ent=entry: on_num_label_click(e, ent))
-    entry.grid(row=row, column=1, padx=0, pady=1, sticky="ew")
-    group_combo1.grid(row=row, column=2, padx=0, pady=1)
-    group_combo2.grid(row=row, column=3, padx=0, pady=1)
-    group_combo3.grid(row=row, column=4, padx=0, pady=1)
-    group_combo4.grid(row=row, column=5, padx=0, pady=1)
+    # Entry 欄位 - 使用 sticky="ew" 讓它自動填滿空間
+    entry.grid(row=row, column=1, padx=1, pady=adaptive_padding, sticky="ew")
+    # Combo 欄位 - 固定寬度
+    group_combo1.grid(row=row, column=2, padx=0, pady=adaptive_padding, sticky="ew")
+    group_combo2.grid(row=row, column=3, padx=0, pady=adaptive_padding, sticky="ew")
+    group_combo3.grid(row=row, column=4, padx=0, pady=adaptive_padding, sticky="ew")
+    group_combo4.grid(row=row, column=5, padx=0, pady=adaptive_padding, sticky="ew")
     checkbox_vars_entries.append((entry, group_var1, group_var2, group_var3, group_var4, group_combo1, group_combo2, group_combo3, group_combo4))
     num_btn = tb.Button(
         group_frames[col],
@@ -486,11 +568,11 @@ for i in range(15):  # 15行
 
 # 先在初始化時建立 style
 style = tb.Style()
-style.configure("Num.TButton", font=("Microsoft JhengHei", 10, "bold"))
+style.configure("Num.TButton", font=("Microsoft JhengHei", scaled_font_size, "bold"))
 
 # --- row 8~10 動態日誌區塊 ---
-log_text = tb.Text(frm, height=12, width=18, state="disabled", wrap="word", font=tkfont.Font(family="Microsoft JhengHei", size=10))
-log_text.grid(row=8, column=0, rowspan=3, sticky="nsew", padx=(0, 8), pady=(0, 0))
+log_text = tb.Text(frm, height=12, width=18, state="disabled", wrap="word", font=tkfont.Font(family="Microsoft JhengHei", size=scaled_font_size))
+log_text.grid(row=8, column=0, rowspan=3, sticky="nsew", padx=(0, int(8 / dpi_scale)), pady=(0, 0))
 
 # --- row 8~9 啟動/關閉分組按鈕區域 ---
 btns_outer_frame = tb.Frame(frm)
@@ -519,7 +601,7 @@ for row, col, text, code, bootstyle, cmd in group_btn_grid:
         command=cmd,
         width=8
     )
-    btn.grid(row=row-8, column=col, padx=(2, 2), pady=(2, 2), sticky="ew")
+    btn.grid(row=row-8, column=col, padx=(adaptive_padding, adaptive_padding), pady=(adaptive_padding, adaptive_padding), sticky="ew")
     if text == "啟動":
         group_buttons[code] = btn
     else:
@@ -845,20 +927,26 @@ def start_group_opening(group_code):
             file_key = os.path.splitext(os.path.basename(file))[0]
             
             try:
-                if file.lower().endswith('.lnk'):
+                if file_path.lower().endswith('.lnk'):
+                    # 解析捷徑
                     target, args = open_lnk_target(file_path)
                     if target and os.path.exists(target):
-                        log(f"Opening shortcut target: {target} {args}")
-                        subprocess.Popen(
-                            f'"{target}" {args}',
-                            shell=True,
-                            creationflags=subprocess.CREATE_NO_WINDOW
-                        )
+                        log(f"開啟捷徑目標: {target} {args}")
+                        if args:
+                            subprocess.Popen(f'"{target}" {args}', shell=True)
+                        else:
+                            subprocess.Popen(f'"{target}"', shell=True)
                     else:
-                        log(f"無法解析捷徑或目標不存在: {file_path}")
-                        continue
+                        # 如果解析失敗，直接用 Windows 開啟捷徑
+                        log(f"直接開啟捷徑: {file_path}")
+                        os.startfile(file_path)
+                elif file_path.lower().endswith('.exe'):
+                    # 直接執行 .exe 檔案
+                    log(f"執行程式: {file_path}")
+                    subprocess.Popen(f'"{file_path}"', shell=True)
                 else:
-                    log(f"Opening: {file_path}")
+                    # 其他檔案類型用系統預設程式開啟
+                    log(f"開啟檔案: {file_path}")
                     os.startfile(file_path)
                 
                 # 等待視窗出現並恢復佈局
@@ -1061,14 +1149,21 @@ window_list_canvas.configure(yscrollcommand=_on_window_vsb)
 def show_about_dialog():
     about_win = tb.Toplevel(app)
     about_win.title("關於 ChroLens_Portal")
-    about_win.geometry("450x300")
+    
+    # 根據 DPI 調整對話框大小
+    dialog_width = int(450 / dpi_scale)
+    dialog_height = int(300 / dpi_scale)
+    dialog_width = max(400, dialog_width)  # 最小寬度
+    dialog_height = max(280, dialog_height)  # 最小高度
+    
+    about_win.geometry(f"{dialog_width}x{dialog_height}")
     about_win.resizable(False, False)
     about_win.grab_set()
     # 置中顯示
     app.update_idletasks()
-    x = app.winfo_x() + (app.winfo_width() // 2) - 175
+    x = app.winfo_x() + (app.winfo_width() // 2) - (dialog_width // 2)
     y = app.winfo_y() + 80
-    about_win.geometry(f"+{x}+{y}")
+    about_win.geometry(f"{dialog_width}x{dialog_height}+{x}+{y}")
 
     # 設定icon與主程式相同
     try:
@@ -1081,11 +1176,13 @@ def show_about_dialog():
     except Exception as e:
         print(f"無法設定 about 視窗 icon: {e}")
 
-    frm = tb.Frame(about_win, padding=20)
+    # 根據 DPI 調整 padding
+    dialog_padding = max(10, int(20 / dpi_scale))
+    frm = tb.Frame(about_win, padding=dialog_padding)
     frm.pack(fill="both", expand=True)
 
-    tb.Label(frm, text="ChroLens_Portal\n分組開啟/關閉程式\n分組視窗置頂顯示", font=("Microsoft JhengHei", 11,)).pack(anchor="w", pady=(0, 6))
-    link = tk.Label(frm, text="ChroLens_模擬器討論區", font=("Microsoft JhengHei", 10, "underline"), fg="#5865F2", cursor="hand2")
+    tb.Label(frm, text="ChroLens_Portal\n分組開啟/關閉程式\n分組視窗置頂顯示", font=("Microsoft JhengHei", max(9, int(11 / dpi_scale)),)).pack(anchor="w", pady=(0, int(6 / dpi_scale)))
+    link = tk.Label(frm, text="ChroLens_模擬器討論區", font=("Microsoft JhengHei", max(8, int(10 / dpi_scale)), "underline"), fg="#5865F2", cursor="hand2")
     link.pack(anchor="w")
     link.bind("<Button-1>", lambda e: os.startfile("https://discord.gg/72Kbs4WPPn"))
     github = tk.Label(frm, text="查看更多工具(巴哈)", font=("Microsoft JhengHei", 10, "underline"), fg="#24292f", cursor="hand2")
@@ -1169,14 +1266,22 @@ def show_schedule_dialog():
     """顯示排程設定視窗"""
     schedule_win = tb.Toplevel(app)
     schedule_win.title("排程設定")
-    schedule_win.geometry("600x400")
+    
+    # 根據 DPI 調整對話框大小
+    dialog_width = int(600 / dpi_scale)
+    dialog_height = int(400 / dpi_scale)
+    dialog_width = max(500, dialog_width)  # 最小寬度
+    dialog_height = max(350, dialog_height)  # 最小高度
+    
+    schedule_win.geometry(f"{dialog_width}x{dialog_height}")
     schedule_win.resizable(True, True)
+    schedule_win.minsize(500, 350)  # 設定最小尺寸
     
     # 置中顯示
     app.update_idletasks()
-    x = app.winfo_x() + (app.winfo_width() // 2) - 300
+    x = app.winfo_x() + (app.winfo_width() // 2) - (dialog_width // 2)
     y = app.winfo_y() + 50
-    schedule_win.geometry(f"600x400+{x}+{y}")
+    schedule_win.geometry(f"{dialog_width}x{dialog_height}+{x}+{y}")
     
     # 設定 icon
     try:
@@ -1184,8 +1289,9 @@ def show_schedule_dialog():
     except Exception:
         pass
     
-    # 主框架
-    main_frame = tb.Frame(schedule_win, padding=10)
+    # 主框架（根據 DPI 調整 padding）
+    dialog_padding = max(5, int(10 / dpi_scale))
+    main_frame = tb.Frame(schedule_win, padding=dialog_padding)
     main_frame.pack(fill="both", expand=True)
     
     # 響應式配置
@@ -1194,7 +1300,7 @@ def show_schedule_dialog():
     
     # 上方控制區
     control_frame = tb.Frame(main_frame)
-    control_frame.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+    control_frame.grid(row=0, column=0, sticky="ew", pady=(0, dialog_padding))
     
     # 分組選擇
     tb.Label(control_frame, text="分組:").grid(row=0, column=1, padx=(10, 5), sticky="w")
@@ -1250,8 +1356,8 @@ def show_schedule_dialog():
     add_btn.grid(row=0, column=5, padx=(10, 0), sticky="w")
     
     # 排程列表區域
-    list_frame = tb.Frame(main_frame, borderwidth=1, relief="solid")
-    list_frame.grid(row=1, column=0, sticky="nsew", pady=(0, 10))
+    list_frame = tb.Frame(main_frame, borderwidth=max(1, int(1 / dpi_scale)), relief="solid")
+    list_frame.grid(row=1, column=0, sticky="nsew", pady=(0, dialog_padding))
     list_frame.grid_rowconfigure(0, weight=1)
     list_frame.grid_columnconfigure(0, weight=1)
     
@@ -1412,7 +1518,7 @@ def enter_mini_mode():
     for show_label, hotkey_entry in show_label_frames:
         hotkey_entry.pack_forget()
     # 顯示 mini 還原按鈕
-    mini_restore_frame.grid(row=0, column=0, padx=2, pady=2, sticky="ew")
+    mini_restore_frame.grid(row=0, column=0, padx=adaptive_padding, pady=adaptive_padding, sticky="ew")
     
     # 調整 mini 模式下的 row 配置，讓按鈕區域緊湊排列
     frm.grid_rowconfigure(1, weight=0)  # 置頂切換區固定
@@ -1423,13 +1529,17 @@ def enter_mini_mode():
         frm.grid_rowconfigure(row_num, weight=0, minsize=0)
     
     # 調整 row 1 的 padding，移除多餘空間
-    second_row_frame.grid_configure(pady=(0, 2))
+    second_row_frame.grid_configure(pady=(0, adaptive_padding))
     
     # 將按鈕區域移到 row 2 位置，緊接在置頂切換區下方
     btns_outer_frame.grid_configure(row=2, column=1, rowspan=2, columnspan=6, sticky="new", padx=(0, 4), pady=(0, 0))
     
-    # 調整視窗大小為更緊湊的尺寸（高度減少）
-    app.geometry("600x120")
+    # 調整視窗大小為更緊湊的尺寸（根據 DPI 縮放）
+    mini_width = int(600 / dpi_scale)
+    mini_height = int(120 / dpi_scale)
+    mini_width = max(500, mini_width)
+    mini_height = max(100, mini_height)
+    app.geometry(f"{mini_width}x{mini_height}")
     log("已進入 mini 模式（降低資源使用）")
 
 def restore_normal_mode():
@@ -1461,14 +1571,14 @@ def restore_normal_mode():
     # 顯示動態日誌
     log_text.grid()
     # 顯示「置頂切換」文字標籤
-    desc_label.grid(row=0, column=0, padx=2, pady=2, sticky="ew")
+    desc_label.grid(row=0, column=0, padx=adaptive_padding, pady=adaptive_padding, sticky="ew")
     # 顯示所有快捷鍵輸入框
     for show_label, hotkey_entry in show_label_frames:
-        hotkey_entry.pack(side="left", padx=(2,5))
+        hotkey_entry.pack(side="left", padx=(adaptive_padding, int(5 / dpi_scale)))
     # 隱藏 mini 還原按鈕
     mini_restore_frame.grid_remove()
-    # 還原視窗大小
-    app.geometry("1200x720")
+    # 還原視窗大小（使用計算過的自適應大小）
+    app.geometry(f"{scaled_width}x{scaled_height}")
     
     # 還原後立即更新檔案和視窗列表
     update_file_list()
@@ -1497,7 +1607,7 @@ refresh_btn.grid(row=0, column=10, padx=(2,2), sticky="e")
 
 # --- 關於按鈕（原本已存在） ---
 about_btn = tb.Button(top_row_frame, text="關於", command=show_about_dialog, bootstyle=SECONDARY, width=6)
-about_btn.grid(row=0, column=9, padx=(8,2), sticky="e")
+about_btn.grid(row=0, column=9, padx=(4,2), sticky="e")
 
 
 def get_group_files(group_code):
@@ -1704,17 +1814,74 @@ def init_hotkeys():
 threading.Thread(target=init_hotkeys, daemon=True).start()
 
 def open_lnk_target(lnk_path):
-    """解析 .lnk 捷徑檔案，回傳 (目標路徑, 參數字串)"""
-    pythoncom.CoInitialize()
-    shell_link = pythoncom.CoCreateInstance(
-        shell.CLSID_ShellLink, None,
-        pythoncom.CLSCTX_INPROC_SERVER, shell.IID_IShellLink
-    )
-    persist_file = shell_link.QueryInterface(pythoncom.IID_IPersistFile)
-    persist_file.Load(lnk_path)
-    target_path, _ = shell_link.GetPath(shell.SLGP_UNCPRIORITY)
-    arguments = shell_link.GetArguments()
-    return target_path, arguments
+    """解析 .lnk 捷徑檔案，回傳 (目標路徑, 參數字串)
+    使用多種方法嘗試解析，確保兼容性"""
+    
+    # 方法 1: 使用 win32com.client (更穩定的方式)
+    try:
+        import win32com.client
+        shell = win32com.client.Dispatch("WScript.Shell")
+        shortcut = shell.CreateShortCut(lnk_path)
+        target_path = shortcut.Targetpath
+        arguments = shortcut.Arguments
+        if target_path:
+            log(f"[捷徑] 解析成功: {target_path}")
+            return target_path, arguments
+    except Exception as e:
+        log(f"[捷徑] 方法1失敗: {e}")
+    
+    # 方法 2: 使用 pythoncom (備援)
+    try:
+        import pythoncom
+        from win32com.shell import shell as win32_shell
+        
+        pythoncom.CoInitialize()
+        try:
+            shell_link = pythoncom.CoCreateInstance(
+                win32_shell.CLSID_ShellLink, None,
+                pythoncom.CLSCTX_INPROC_SERVER, win32_shell.IID_IShellLink
+            )
+            persist_file = shell_link.QueryInterface(pythoncom.IID_IPersistFile)
+            persist_file.Load(lnk_path)
+            target_path, _ = shell_link.GetPath(win32_shell.SLGP_UNCPRIORITY)
+            arguments = shell_link.GetArguments()
+            if target_path:
+                log(f"[捷徑] 解析成功(方法2): {target_path}")
+                return target_path, arguments
+        finally:
+            pythoncom.CoUninitialize()
+    except Exception as e:
+        log(f"[捷徑] 方法2失敗: {e}")
+    
+    # 方法 3: 使用 PowerShell (最可靠的備援方法)
+    try:
+        import subprocess
+        ps_cmd = f'''
+        $ws = New-Object -ComObject WScript.Shell;
+        $shortcut = $ws.CreateShortcut('{lnk_path}');
+        Write-Output $shortcut.TargetPath;
+        Write-Output "|||";
+        Write-Output $shortcut.Arguments
+        '''
+        result = subprocess.run(
+            ['powershell', '-Command', ps_cmd],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0:
+            output = result.stdout.strip().split('|||')
+            target_path = output[0].strip() if output else ''
+            arguments = output[1].strip() if len(output) > 1 else ''
+            if target_path and os.path.exists(target_path):
+                log(f"[捷徑] 解析成功(PowerShell): {target_path}")
+                return target_path, arguments
+    except Exception as e:
+        log(f"[捷徑] PowerShell方法失敗: {e}")
+    
+    # 所有方法都失敗
+    log(f"[捷徑] 無法解析: {lnk_path}，將使用直接開啟方式")
+    return None, None
 
 def open_entry_file(entry):
     file_path = entry.get().strip()
@@ -1732,17 +1899,24 @@ def open_entry_file(entry):
             target, args = open_lnk_target(full_path)
             if target and os.path.exists(target):
                 log(f"開啟捷徑目標: {target} {args}")
-                subprocess.Popen(
-                    f'"{target}" {args}',
-                    shell=True,
-                    creationflags=subprocess.CREATE_NO_WINDOW
-                )
+                # 使用 subprocess 執行目標程式
+                if args:
+                    subprocess.Popen(f'"{target}" {args}', shell=True)
+                else:
+                    subprocess.Popen(f'"{target}"', shell=True)
             else:
-                log(f"無法解析捷徑或目標不存在: {full_path}")
+                # 如果解析失敗，直接用 Windows 開啟捷徑
+                log(f"直接開啟捷徑: {full_path}")
+                os.startfile(full_path)
+        elif full_path.lower().endswith('.exe'):
+            # 直接執行 .exe 檔案
+            log(f"執行程式: {full_path}")
+            subprocess.Popen(f'"{full_path}"', shell=True)
         else:
-            os.startfile(full_path)
+            # 其他檔案類型用系統預設程式開啟
             log(f"已開啟檔案: {full_path}")
+            os.startfile(full_path)
     except Exception as e:
-        log(f"開啟檔案失敗: {e}")
+        log(f"開啟檔案失敗: {full_path}，錯誤：{e}")
 
 app.mainloop()

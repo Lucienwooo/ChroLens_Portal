@@ -18,7 +18,7 @@ class PortalBuilder:
     def __init__(self):
         # 專案目錄
         self.project_dir = Path(__file__).parent
-        self.main_file = self.project_dir / "ChroLens_Portal2.3.py"
+        self.main_file = self.project_dir / "ChroLens_Portal.py"
         self.icon_file = self.project_dir / "冥想貓貓.ico"
         
         # 輸出目錄
