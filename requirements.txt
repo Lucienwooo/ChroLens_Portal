@@ -1,4 +1,4 @@
-"""ChroLens_Portal 2.3 依賴套件
+"""ChroLens_Portal 2.4 依賴套件
 
 執行以下指令安裝：
 pip install -r requirements.txt
@@ -7,3 +7,4 @@ pip install -r requirements.txt
 ttkbootstrap>=1.10.1
 pywin32>=305
 keyboard>=0.13.5
+pyinstaller>=6.0.0
