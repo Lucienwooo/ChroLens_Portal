@@ -7,6 +7,61 @@
 
 ---
 
+## 🌏 多語言介紹
+
+### 🇹🇼 繁體中文
+**ChroLens_Portal** 是一款 Windows 視窗管理工具，讓你輕鬆管理多個程式分組。  
+就像遊戲玩家常用的 **DisplayFusion** 或 **PowerToys FancyZones**，但更專注於分組啟動和快捷切換。  
+無需複雜設定，一鍵啟動工作環境，快捷鍵瞬間切換，讓多工作業更流暢！
+
+---
+
+### 🇯🇵 日本語の紹介
+
+**ChroLens_Portal** は、Windows上で複数のアプリケーションを**グループごとに管理・起動**できるウィンドウ管理ツールです。  
+**DisplayFusion** や **PowerToys FancyZones** のような強力なウィンドウ配置ツールに触発されつつ、より**シンプルなグループ起動とホットキー切替**に特化しています。
+
+日本のユーザーに人気の **ClocX**（デスクトップカスタマイズ）や **窓の手**（Windowsカスタマイズ）のように、作業効率を高めるための便利ツールとして活用できます。  
+複雑な設定は不要で、ワンクリックで作業環境を起動し、ホットキーで瞬時に切り替えられます。
+
+**主な機能：**
+- グループ起動（ファイル・アプリを一括起動）
+- ホットキー切替（Alt+1/2/3/Q/W/E で即座に切り替え）
+- レイアウト記憶（PowerToys FancyZones風の配置保存）
+- スケジュール起動（指定時刻に自動起動）
+- 自動更新システム
+
+**こんな場面で便利：**
+- 複数のプロジェクトを切り替える開発者
+- ゲーム配信で複数ツールを管理する配信者
+- 複数のブラウザタブやアプリを同時管理したいパワーユーザー
+
+---
+
+### 🇺🇸 English Introduction
+
+**ChroLens_Portal** is a Windows window management tool that helps you organize and launch multiple applications in groups.  
+Inspired by powerful tools like **DisplayFusion** and **PowerToys FancyZones**, ChroLens_Portal focuses on **simplified group launching and hotkey switching** for everyday productivity.
+
+Think of it as a blend of **Launchy** (quick app launcher) and **AquaSnap** (window management), but designed specifically for managing application groups rather than just individual windows.
+
+**Key Features:**
+- Group Launch (launch multiple files/apps with one click)
+- Hotkey Switching (Alt+1/2/3/Q/W/E for instant switching)
+- Layout Memory (FancyZones-style window positioning)
+- Scheduled Launch (auto-start groups at specific times)
+- Auto-Update System
+
+**Perfect for:**
+- Developers switching between multiple projects
+- Streamers managing obs, chat tools, and games simultaneously
+- Power users juggling multiple browser tabs and applications
+- Anyone tired of manually opening the same apps every day
+
+Similar to how **Microsoft PowerToys** enhances Windows productivity, ChroLens_Portal streamlines your workflow by turning repetitive window management into single-key operations.
+
+---
+
 ## ✨ 核心功能
 
 ### 🚀 分組啟動
@@ -195,6 +250,19 @@ ChroLens_Portal/
 ---
 
 ## 📝 更新日誌
+
+> 📋 **完整版本記錄請查看** [UPDATE.md](UPDATE.md)
+
+### v2.4 (2025/11/19) - 最新版本
+- ✨ **自動更新系統**
+  - 整合 GitHub Releases 自動更新機制
+  - 支援一鍵檢查更新與自動安裝
+  - 即時顯示下載和安裝進度
+- 📦 **開發工具**
+  - 新增 `build_simple.py` 和 `打包.bat`
+  - 優化專案結構，移除冗餘文件
+- 🔧 **版本號統一管理**
+  - 視窗標題自動跟隨 `CURRENT_VERSION`
 
 ### v2.3.1 (2025/11/19)
 - 🐛 **修復快捷鍵無法觸發問題**

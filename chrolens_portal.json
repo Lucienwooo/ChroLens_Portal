@@ -1,5 +1,5 @@
 {
-  "folder": "C:/Users/Lucien/Desktop/0-shot",
+  "folder": "C:/Users/Lucien/Desktop",
   "interval": "4",
   "group_display_names": {
     "A": "A",
@@ -18,10 +18,10 @@
     "Alt+e"
   ],
   "checkbox_entries": [
-    "主教.lnk",
-    "噗噗.lnk",
-    "杏仁.lnk",
     "",
+    "",
+    "",
+    "打包.bat - 捷徑.lnk",
     "",
     "",
     "",
@@ -35,10 +35,10 @@
     ""
   ],
   "group_var1": [
-    "A",
-    "A",
-    "A",
     "",
+    "",
+    "",
+    "A",
     "",
     "",
     "",
@@ -103,5 +103,6 @@
     ""
   ],
   "schedule_tasks": [],
-  "window_layouts": {}
+  "window_layouts": {},
+  "language": "English"
 }

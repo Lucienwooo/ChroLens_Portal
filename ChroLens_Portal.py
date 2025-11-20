@@ -2,7 +2,36 @@
 ### 2025/11/19 By Lucienwooo
 ### 視窗管理工具 - 分組啟動、快捷切換、智能布局記憶
 ### 需要管理者權限（會自動要求提升）
-CURRENT_VERSION = "2.4"
+#
+# === 專案文件清理規則（給 AI Agent） ===
+# 重要：本專案應該保持精簡，避免累積測試檔案
+# 
+# 【應保留的檔案】
+# - README.md (專案根目錄，主要說明文件)
+# - UPDATE.md (更新說明文檔)
+# - LICENSE (授權文件)
+# 
+# 【應刪除的檔案】（每次修復後清理）
+# - *_test.py, test_*.py (所有測試腳本)
+# - TEST_REPORT.md, REPAIR_REPORT.md, *_NOTES.md (測試報告等臨時文檔)
+# - run_*.py (臨時執行腳本)
+# - backup_*.json (備份設定檔)
+#
+# 【清理命令】（PowerShell）
+# Remove-Item *_test.py -Force -ErrorAction SilentlyContinue
+# Remove-Item test_*.py -Force -ErrorAction SilentlyContinue
+# Remove-Item run_*.py -Force -ErrorAction SilentlyContinue
+# Remove-Item *_NOTES.md -Force -ErrorAction SilentlyContinue
+# Remove-Item TEST_*.md -Force -ErrorAction SilentlyContinue
+# Remove-Item REPAIR_*.md -Force -ErrorAction SilentlyContinue
+# Remove-Item backup_*.json -Force -ErrorAction SilentlyContinue
+#
+# === 版本更新紀錄 ===
+# [2.5] - 完整多語言支援、UI 自適應、分組關閉日誌翻譯、捷徑解析日誌翻譯
+# [2.4] - Mini 模式優化、語言切換修復、自動清理測試檔案
+#
+
+CURRENT_VERSION = "2.5"
 import os
 import time
 import win32gui
@@ -25,6 +54,7 @@ import win32process
 from update_manager import UpdateManager
 from update_dialog import UpdateDialog, NoUpdateDialog
 import ctypes
+from lang import LANG_MAP, get_text
 
 SETTINGS_FILE = "chrolens_portal.json"
 
@@ -105,6 +135,48 @@ if not is_admin():
     print("需要管理者權限，正在重新啟動...")
     run_as_admin()
 
+# === 啟動時清理測試檔案和多餘文檔 ===
+def cleanup_test_files():
+    """清理測試檔案和臨時文檔（保持專案精簡）"""
+    import glob
+    
+    # 定義需要清理的檔案模式
+    cleanup_patterns = [
+        "*_test.py",
+        "test_*.py",
+        "run_*.py",
+        "*_NOTES.md",
+        "TEST_*.md",
+        "REPAIR_*.md",
+        "backup_*.json"
+    ]
+    
+    # 需要保留的檔案（不被清理）
+    keep_files = ["README.md", "UPDATE.md", "LICENSE", "chrolens_portal.json"]
+    
+    cleaned_count = 0
+    for pattern in cleanup_patterns:
+        for file_path in glob.glob(pattern):
+            # 檢查是否在保留清單中
+            if os.path.basename(file_path) not in keep_files:
+                try:
+                    os.remove(file_path)
+                    print(f"✓ 已清理：{file_path}")
+                    cleaned_count += 1
+                except Exception as e:
+                    print(f"✗ 清理失敗：{file_path} - {e}")
+    
+    if cleaned_count > 0:
+        print(f"🧹 清理完成，共移除 {cleaned_count} 個檔案")
+    else:
+        print("✓ 無需清理")
+
+# 執行清理（靜默模式，不影響啟動速度）
+try:
+    cleanup_test_files()
+except Exception as e:
+    print(f"清理過程發生錯誤：{e}")
+
 # === 介面區塊 ===
 app = tb.Window(themename="darkly")
 app.title(f"ChroLens_Portal {CURRENT_VERSION}")
@@ -184,6 +256,11 @@ close_buttons = {}
 
 # --- Mini 模式狀態追踪（用於資源優化）---
 mini_mode_active = False
+mini_window = None  # Mini 模式視窗實例
+
+# --- 語言設定（多語言功能）---
+current_language = "繁體中文"  # 預設語言
+lang_map = LANG_MAP["繁體中文"]  # 當前語言的翻譯字典
 
 # --- 排程任務（需要在程式開頭定義以避免 save_settings 錯誤）---
 schedule_tasks = []
@@ -215,11 +292,13 @@ def choose_folder():
 folder_frame = tb.Frame(top_row_frame, padding=(adaptive_padding, adaptive_padding))
 folder_frame.grid(row=0, column=0, sticky="w", padx=(0, 4))
 tb.Entry(folder_frame, textvariable=folder_var, width=25).grid(row=0, column=0, padx=(adaptive_padding, adaptive_padding), sticky="ew")
-tb.Button(folder_frame, text="選擇開啟路徑", command=lambda: choose_folder(), bootstyle=SECONDARY).grid(row=0, column=1, padx=(adaptive_padding, 0), sticky="ew")
+choose_path_btn = tb.Button(folder_frame, text=lang_map["選擇開啟路徑"], command=lambda: choose_folder(), bootstyle=SECONDARY)
+choose_path_btn.grid(row=0, column=1, padx=(adaptive_padding, 0), sticky="ew")
 
 interval_frame = tb.Frame(top_row_frame, padding=(adaptive_padding, adaptive_padding))
 interval_frame.grid(row=0, column=1, sticky="w", padx=(0, 4))
-tb.Label(interval_frame, text="間隔秒數:").grid(row=0, column=0, sticky="w")
+interval_label = tb.Label(interval_frame, text=lang_map["間隔秒數:"])
+interval_label.grid(row=0, column=0, sticky="w")
 tb.Entry(interval_frame, textvariable=interval_var, width=3).grid(row=0, column=1, padx=(adaptive_padding, 0), sticky="w")
 
 # === 視窗佈局記憶功能 (FancyZones) ===
@@ -227,7 +306,7 @@ def capture_window_layout(group_code):
     """捕獲指定分組所有視窗的位置和大小"""
     files = get_group_files(group_code)
     if not files:
-        log(f"分組 {group_display_names[group_code].get()} 沒有檔案，無法捕獲佈局")
+        log(f"{lang_map['分組']} {group_display_names[group_code].get()} {lang_map['沒有檔案，無法捕獲佈局']}")
         return
     
     # 取得分組視窗標題關鍵字
@@ -267,9 +346,9 @@ def capture_window_layout(group_code):
                         "height": rect[3] - rect[1],
                         "state": placement[1]  # SW_SHOWNORMAL=1, SW_SHOWMINIMIZED=2, SW_SHOWMAXIMIZED=3
                     }
-                    log(f"捕獲視窗佈局：{filename} ({rect[2]-rect[0]}x{rect[3]-rect[1]} at {rect[0]},{rect[1]})")
+                    log(f"{lang_map['捕獲視窗佈局：']}{filename} ({rect[2]-rect[0]}x{rect[3]-rect[1]} at {rect[0]},{rect[1]})")
                 except Exception as e:
-                    log(f"捕獲視窗佈局失敗：{window_text} ({e})")
+                    log(f"{lang_map['捕獲視窗佈局失敗：']}{window_text} ({e})")
                 break
     
     win32gui.EnumWindows(enum_handler, None)
@@ -279,19 +358,19 @@ def capture_window_layout(group_code):
             window_layouts[group_code] = {}
         window_layouts[group_code] = captured
         save_settings()
-        log(f"已捕獲分組 {group_display_names[group_code].get()} 的 {len(captured)} 個視窗佈局")
+        log(f"{lang_map['已捕獲分組']} {group_display_names[group_code].get()} {lang_map['的']} {len(captured)} {lang_map['個視窗佈局']}")
     else:
-        log(f"未找到分組 {group_display_names[group_code].get()} 的任何視窗")
+        log(f"{lang_map['未找到分組']} {group_display_names[group_code].get()} {lang_map['的任何視窗']}")
 
 def restore_window_layout(group_code, hwnd, window_text):
     """恢復指定視窗的位置和大小"""
     if group_code not in window_layouts:
-        log(f"[佈局] 分組 {group_code} 沒有保存的佈局資料")
+        log(f"{lang_map['[佈局] 分組']} {group_code} {lang_map['沒有保存的佈局資料']}")
         return False
     
     layout = window_layouts[group_code]
     if not layout:
-        log(f"[佈局] 分組 {group_code} 的佈局資料為空")
+        log(f"{lang_map['[佈局] 分組']} {group_code} {lang_map['的佈局資料為空']}")
         return False
     
     window_text_lower = window_text.lower()
@@ -311,11 +390,11 @@ def restore_window_layout(group_code, hwnd, window_text):
                 if state == win32con.SW_SHOWMAXIMIZED:
                     # 最大化視窗
                     win32gui.ShowWindow(hwnd, win32con.SW_SHOWMAXIMIZED)
-                    log(f"[佈局] 恢復最大化：{window_text}")
+                    log(f"{lang_map['[佈局] 恢復最大化：']}{window_text}")
                 elif state == win32con.SW_SHOWMINIMIZED:
                     # 最小化視窗
                     win32gui.ShowWindow(hwnd, win32con.SW_SHOWMINIMIZED)
-                    log(f"[佈局] 恢復最小化：{window_text}")
+                    log(f"{lang_map['[佈局] 恢復最小化：']}{window_text}")
                 else:
                     # 正常視窗：直接設置位置和大小，不調用 ShowWindow
                     # 使用 SWP_NOZORDER 避免改變 Z-order
@@ -325,26 +404,26 @@ def restore_window_layout(group_code, hwnd, window_text):
                         x, y, width, height,
                         win32con.SWP_SHOWWINDOW | win32con.SWP_NOZORDER
                     )
-                    log(f"[佈局] 恢復位置：{window_text} -> {width}x{height} at ({x},{y})")
+                    log(f"{lang_map['[佈局] 恢復位置：']}{window_text} -> {width}x{height} at ({x},{y})")
                 return True
             except Exception as e:
-                log(f"[佈局] 恢復失敗：{window_text} ({e})")
+                log(f"{lang_map['[佈局] 恢復失敗：']}{window_text} ({e})")
                 return False
     
-    log(f"[佈局] 未找到匹配的佈局：{window_text}")
+    log(f"{lang_map['[佈局] 未找到匹配的佈局：']}{window_text}")
     return False
 
 # 新增「存檔」按鈕（捕獲當前所有分組視窗佈局）
 def manual_save():
     log("=" * 50)
-    log("開始捕獲所有分組的視窗佈局...")
+    log(lang_map["開始捕獲所有分組的視窗佈局..."])
     total_captured = 0
     
     # 捕獲所有當前活躍分組的視窗佈局
     for group_code in group_codes:
         files = get_group_files(group_code)
         if files:
-            log(f"分組 {group_display_names[group_code].get()} 包含檔案: {files}")
+            log(f"{lang_map['分組']} {group_display_names[group_code].get()} {lang_map['包含檔案: ']}{files}")
             before_count = len(window_layouts.get(group_code, {}))
             capture_window_layout(group_code)
             after_count = len(window_layouts.get(group_code, {}))
@@ -352,13 +431,13 @@ def manual_save():
             if captured > 0:
                 total_captured += captured
         else:
-            log(f"分組 {group_display_names[group_code].get()} 沒有檔案，跳過")
+            log(f"{lang_map['分組']} {group_display_names[group_code].get()} {lang_map['沒有檔案，跳過']}")
     
     save_settings()
-    log(f"已手動儲存設定檔，共捕獲 {total_captured} 個新視窗佈局")
+    log(f"{lang_map['已手動儲存設定檔，共捕獲']} {total_captured} {lang_map['個新視窗佈局']}")
     log("=" * 50)
 
-save_btn = tb.Button(top_row_frame, text="存檔", command=manual_save, bootstyle="info", width=6)
+save_btn = tb.Button(top_row_frame, text=lang_map["存檔"], command=manual_save, bootstyle="info")
 save_btn.grid(row=0, column=5, padx=(4,2), sticky="e")
 
 # --- 新增：分組名稱修改區 ---
@@ -432,8 +511,8 @@ second_row_frame.grid(row=1, column=0, columnspan=8, sticky="ew")
 for i in range(7):
     second_row_frame.grid_columnconfigure(i, weight=1)
 show_label_font = tkfont.Font(family="Microsoft JhengHei", size=12)
-desc_label = tb.Label(second_row_frame, text="置頂切換", width=12, anchor="center", font=show_label_font)
-desc_label.grid(row=0, column=0, padx=2, pady=2, sticky="ew")
+topmost_toggle_btn = tb.Label(second_row_frame, text=lang_map["置頂切換"], anchor="center", font=show_label_font)
+topmost_toggle_btn.grid(row=0, column=0, padx=2, pady=2, sticky="ew")
 
 # 建立 mini 模式的還原按鈕（初始隱藏）
 # 使用 Frame + Label 來顯示較大的 emoji 箭頭
@@ -453,24 +532,38 @@ mini_restore_label.bind("<Button-1>", lambda e: None)
 # mini_restore_btn.grid(row=0, column=0, padx=2, pady=2, sticky="ew")
 
 for idx, code in enumerate(group_codes):
-    frame = tb.Frame(second_row_frame, borderwidth=max(1, int(2 / dpi_scale)), relief="groove")
+    frame = tb.Frame(second_row_frame, borderwidth=max(1, int(2 / dpi_scale)), relief="groove", padding=2)
     frame.grid(row=0, column=idx+1, padx=adaptive_padding, pady=adaptive_padding, sticky="ew")
-    # 將 Label 改為可點擊的按鈕樣式，但保持 Label 外觀
-    show_label = tb.Label(frame, text=f"{group_display_names[code].get()} ", width=6, font=show_label_font, cursor="hand2")
-    show_label.pack(side="left", padx=(adaptive_padding, 0))
-    # 綁定點擊事件，觸發對應分組的快捷鍵功能
-    show_label.bind("<Button-1>", lambda e, c=code: focus_next_in_group(c))
-    hotkey_entry = tb.Entry(frame, textvariable=group_hotkeys[idx], width=8, state="readonly", justify="center", font=show_label_font)
+    # 置頂切換按鈕（黑底藍框，滑鼠移過才變藍）
+    show_btn = tb.Button(
+        frame, 
+        text=group_display_names[code].get(), 
+        command=lambda c=code: focus_next_in_group(c),
+        bootstyle="info-outline",
+        width=6
+    )
+    show_btn.pack(side="left", padx=(adaptive_padding, 0))
+    # 快捷鍵文字框 - 設定深色背景和樣式
+    hotkey_entry = tb.Entry(
+        frame, 
+        textvariable=group_hotkeys[idx], 
+        width=8, 
+        state="readonly", 
+        justify="center", 
+        font=show_label_font,
+        foreground="#ffffff",  # 白色文字
+        style="Dark.TEntry"  # 使用深色樣式
+    )
     hotkey_entry.pack(side="left", padx=(adaptive_padding, int(5 / dpi_scale)))
     def make_on_key(idx):
         return lambda event, i=idx: on_hotkey_entry_key(event, i)
     hotkey_entry.bind("<Key>", make_on_key(idx))
     hotkey_entry.bind("<Button-1>", lambda e, entry=hotkey_entry: entry.focus_set())
-    show_label_frames.append((show_label, hotkey_entry))
+    show_label_frames.append((show_btn, hotkey_entry))
 
 def update_show_labels(*args):
     for idx, code in enumerate(group_codes):
-        show_label_frames[idx][0].config(text=f"{group_display_names[code].get()} ")  
+        show_label_frames[idx][0].config(text=group_display_names[code].get())  
 for c in group_codes:
     group_display_names[c].trace_add("write", update_show_labels)
 
@@ -495,7 +588,7 @@ def on_hotkey_entry_key(event, idx):
     if modifiers and key:
         hotkey = "+".join(modifiers + [key])
         group_hotkeys[idx].set(hotkey)
-        log(f"已設定分組 {group_codes[idx]} 的快捷鍵為：{hotkey}")
+        log(f"{lang_map['已設定分組']} {group_codes[idx]} {lang_map['的快捷鍵為：']}{hotkey}")
 
 # --- 編號標籤點擊處理函數 ---
 def on_num_label_click(event, entry):
@@ -569,6 +662,14 @@ for i in range(15):  # 15行
 # 先在初始化時建立 style
 style = tb.Style()
 style.configure("Num.TButton", font=("Microsoft JhengHei", scaled_font_size, "bold"))
+# 配置深色 Entry 樣式（用於快捷鍵文字框）
+style.configure("Dark.TEntry", 
+                fieldbackground="#2b3e50",  # 深色背景（與 darkly 主題一致）
+                foreground="#ffffff",  # 白色文字
+                bordercolor="#4e5d6c",  # 邊框顏色
+                lightcolor="#4e5d6c",
+                darkcolor="#2b3e50",
+                insertcolor="#ffffff")  # 游標顏色
 
 # --- row 8~10 動態日誌區塊 ---
 log_text = tb.Text(frm, height=12, width=18, state="disabled", wrap="word", font=tkfont.Font(family="Microsoft JhengHei", size=scaled_font_size))
@@ -802,7 +903,7 @@ def on_label_drag_start(event, title):
                 entry.delete(0, tk.END)
                 entry.insert(0, title)
                 entry.config(state="readonly")
-                log(f"拖移「{title}」到分組欄位")
+                log(f"{lang_map['拖移「']}{title}{lang_map['」到分組欄位']}")
         if drag_label_popup["win"]:
             drag_label_popup["win"].destroy()
             drag_label_popup["win"] = None
@@ -819,7 +920,7 @@ for entry, *_ in checkbox_vars_entries:
         ent.delete(0, tk.END)
         ent.config(state="readonly")
         if old:
-            log(f"清空分組欄位內容（原內容：{old}）")
+            log(f"{lang_map['清空分組欄位內容（原內容：']}{old}{lang_map['）']}")
     entry.bind("<Button-3>", clear_entry)  # 右鍵點擊清空內容
 
 def set_group_windows_topmost(group_code):
@@ -863,23 +964,23 @@ def set_group_windows_topmost(group_code):
                     win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_SHOWWINDOW
                 )
         except Exception as e:
-            log(f"處理視窗失敗：{window_text} ({e})")
+            log(f"{lang_map['處理視窗失敗：']}{window_text} ({e})")
 
 def start_group_opening(group_code):
     folder = folder_var.get()
     try:
         interval = float(interval_var.get())
     except ValueError:
-        log("請輸入正確的間隔秒數")
+        log(lang_map["請輸入正確的間隔秒數"])
         return
     if not os.path.isdir(folder):
-        log("請選擇正確的資料夾")
+        log(lang_map["請選擇正確的資料夾"])
         return
     files = get_group_files(group_code)
     if not files:
-        log(f"分組 {group_display_names[group_code].get()} 沒有檔案")
+        log(f"{lang_map['分組']} {group_display_names[group_code].get()} {lang_map['沒有檔案']}")
         return
-    log(f"開始開啟分組 {group_display_names[group_code].get()} 的檔案於 {folder}")
+    log(f"{lang_map['開始開啟分組']} {group_display_names[group_code].get()} {lang_map['的檔案於']} {folder}")
     
     def wait_for_window_and_restore(file_key, max_wait=10):
         """等待視窗出現並恢復佈局"""
@@ -921,7 +1022,7 @@ def start_group_opening(group_code):
         for file in files:
             file_path = os.path.join(folder, file)
             if not os.path.exists(file_path):
-                log(f"找不到檔案: {file_path}")
+                log(f"{lang_map['找不到檔案: ']}{file_path}")
                 continue
             
             file_key = os.path.splitext(os.path.basename(file))[0]
@@ -931,29 +1032,29 @@ def start_group_opening(group_code):
                     # 解析捷徑
                     target, args = open_lnk_target(file_path)
                     if target and os.path.exists(target):
-                        log(f"開啟捷徑目標: {target} {args}")
+                        log(f"{lang_map['開啟捷徑目標: ']}{target} {args}")
                         if args:
                             subprocess.Popen(f'"{target}" {args}', shell=True)
                         else:
                             subprocess.Popen(f'"{target}"', shell=True)
                     else:
                         # 如果解析失敗，直接用 Windows 開啟捷徑
-                        log(f"直接開啟捷徑: {file_path}")
+                        log(f"{lang_map['直接開啟捷徑: ']}{file_path}")
                         os.startfile(file_path)
                 elif file_path.lower().endswith('.exe'):
                     # 直接執行 .exe 檔案
-                    log(f"執行程式: {file_path}")
+                    log(f"{lang_map['執行程式: ']}{file_path}")
                     subprocess.Popen(f'"{file_path}"', shell=True)
                 else:
                     # 其他檔案類型用系統預設程式開啟
-                    log(f"開啟檔案: {file_path}")
+                    log(f"{lang_map['開啟檔案: ']}{file_path}")
                     os.startfile(file_path)
                 
                 # 等待視窗出現並恢復佈局
                 wait_for_window_and_restore(file_key)
                 
             except Exception as e:
-                log(f"無法開啟: {file_path}，錯誤：{e}")
+                log(f"{lang_map['無法開啟: ']}{file_path}{lang_map['，錯誤：']}{e}")
             
             time.sleep(interval)
     
@@ -962,7 +1063,7 @@ def start_group_opening(group_code):
 def close_group_windows(group_code):
     files = get_group_files(group_code)
     if not files:
-        log(f"分組 {group_display_names[group_code].get()} 沒有檔案")
+        log(f"{lang_map['分組']} {group_display_names[group_code].get()} {lang_map['沒有檔案']}")
         return
 
     keywords = []
@@ -982,14 +1083,14 @@ def close_group_windows(group_code):
             if any(kw and kw in window_text_lower for kw in keywords):
                 try:
                     win32gui.PostMessage(hwnd, win32con.WM_CLOSE, 0, 0)
-                    log(f"已關閉視窗：{window_text}")
+                    log(f"{lang_map['已關閉視窗：']}{window_text}")
                     nonlocal closed_any
                     closed_any = True
                 except Exception as e:
-                    log(f"關閉視窗失敗：{window_text} ({e})")
+                    log(f"{lang_map['關閉視窗失敗：']}{window_text} ({e})")
     win32gui.EnumWindows(enum_handler, None)
     if not closed_any:
-        log(f"找不到分組 {group_display_names[group_code].get()} 的視窗可關閉")
+        log(f"{lang_map['找不到分組']} {group_display_names[group_code].get()} {lang_map['的視窗可關閉']}")
 
 def save_settings():
     try:
@@ -1005,6 +1106,7 @@ def save_settings():
             "group_var4": [var4.get() for _, _, _, _, var4, *_ in checkbox_vars_entries],
             "schedule_tasks": schedule_tasks,  # 儲存排程任務
             "window_layouts": window_layouts,  # 儲存視窗佈局
+            "language": current_language,  # 儲存當前語言
         }
         with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
@@ -1014,7 +1116,7 @@ def save_settings():
     except Exception as e:
         # 只在非初始化錯誤時記錄
         if "is not defined" not in str(e):
-            log(f"儲存設定檔失敗: {e}")
+            log(f"{lang_map['儲存設定檔失敗: ']}{e}")
 
         
 # 1. 先定義 log
@@ -1059,6 +1161,36 @@ def update_group_name(*args):
         if code in close_buttons:
             close_buttons[code].config(text=f"{group_display_names[code].get()}")
 
+# ============================================
+# 語言切換函數
+# ============================================
+
+def apply_language(new_lang):
+    """切換語言並更新所有 UI 元件"""
+    global current_language, lang_map
+    current_language = new_lang
+    lang_map = LANG_MAP.get(new_lang, LANG_MAP["繁體中文"])
+    
+    # 更新頂部按鈕
+    mini_btn.config(text=lang_map["mini"])
+    schedule_btn.config(text=lang_map["排程"])
+    about_btn.config(text=lang_map["關於"])
+    
+    # 更新第一行按鈕和標籤
+    choose_path_btn.config(text=lang_map["選擇開啟路徑"])
+    interval_label.config(text=lang_map["間隔秒數:"])
+    
+    # 更新第二行按鈕
+    save_btn.config(text=lang_map["存檔"])
+    
+    # 更新第二行的置頂切換按鈕
+    topmost_toggle_btn.config(text=lang_map["置頂切換"])
+    
+    # 注意：部分 UI 元件需要在程式啟動時就使用 lang_map 來建立
+    # 目前已更新的元件會在切換語言時即時更新
+    
+    log(f"{lang_map['語言已切換為：']}{new_lang}")
+
 def load_settings():
     global schedule_tasks, window_layouts
     if not os.path.exists(SETTINGS_FILE):
@@ -1094,12 +1226,19 @@ def load_settings():
         # 載入視窗佈局
         window_layouts = data.get("window_layouts", {})
         
+        # 載入語言設定（只設定變數，不更新 UI，因為 UI 還沒建立）
+        global current_language, lang_map
+        saved_lang = data.get("language", "繁體中文")
+        if saved_lang in LANG_MAP:
+            current_language = saved_lang
+            lang_map = LANG_MAP.get(saved_lang, LANG_MAP["繁體中文"])
+        
         update_show_labels()
         update_group_name()
     except Exception as e:
         # 只在 log 函數存在時才記錄錯誤
         try:
-            log(f"設定檔讀取失敗: {e}")
+            log(f"{lang_map['設定檔讀取失敗: ']}{e}")
         except:
             print(f"設定檔讀取失敗: {e}")
 # 在所有重要變動時呼叫 save_settings
@@ -1128,7 +1267,7 @@ load_settings()
 # --- 啟動時延遲0.5秒再讀取設定檔 ---
 def delayed_load_settings():
     time.sleep(0.5)
-    app.after(0, lambda: [load_settings(), update_file_list(), update_window_list()])
+    app.after(0, lambda: [load_settings(), apply_language(current_language), update_file_list(), update_window_list()])
 threading.Thread(target=delayed_load_settings, daemon=True).start()
 
 # 綁定分組名稱變動時自動更新
@@ -1148,7 +1287,7 @@ window_list_canvas.configure(yscrollcommand=_on_window_vsb)
 
 def show_about_dialog():
     about_win = tb.Toplevel(app)
-    about_win.title("關於 ChroLens_Portal")
+    about_win.title(lang_map["關於 ChroLens_Portal"])
     
     # 根據 DPI 調整對話框大小
     dialog_width = int(450 / dpi_scale)
@@ -1181,7 +1320,7 @@ def show_about_dialog():
     frm = tb.Frame(about_win, padding=dialog_padding)
     frm.pack(fill="both", expand=True)
 
-    tb.Label(frm, text="ChroLens_Portal\n分組開啟/關閉程式\n分組視窗置頂顯示", font=("Microsoft JhengHei", max(9, int(11 / dpi_scale)),)).pack(anchor="w", pady=(0, int(6 / dpi_scale)))
+    tb.Label(frm, text=f"ChroLens_Portal\n{lang_map['視窗管理工具']}\n{lang_map['分組啟動、快捷切換、智能布局記憶']}", font=("Microsoft JhengHei", max(9, int(11 / dpi_scale)),)).pack(anchor="w", pady=(0, int(6 / dpi_scale)))
     link = tk.Label(frm, text="ChroLens_模擬器討論區", font=("Microsoft JhengHei", max(8, int(10 / dpi_scale)), "underline"), fg="#5865F2", cursor="hand2")
     link.pack(anchor="w")
     link.bind("<Button-1>", lambda e: os.startfile("https://discord.gg/72Kbs4WPPn"))
@@ -1197,9 +1336,27 @@ def show_about_dialog():
     kofi_link.pack(side="left")
     kofi_link.bind("<Button-1>", lambda e: os.startfile("https://ko-fi.com/B0B51FBVA8"))
     
-    # 按鈕區域
+    # 按鈕區域（包含語言選擇器）
     button_frame = tb.Frame(frm)
     button_frame.pack(anchor="e", pady=(16, 0))
+    
+    # 語言選擇器（放在左側，不顯示 "語言:" 標籤）
+    lang_var = tk.StringVar(value=current_language)
+    lang_combo = tb.Combobox(button_frame, textvariable=lang_var, values=["繁體中文", "日本語", "English"], 
+                              state="readonly", width=10)
+    lang_combo.pack(side="left", padx=(0, 10))
+    
+    def on_language_change(event):
+        """語言切換事件"""
+        new_lang = lang_var.get()
+        if new_lang != current_language:
+            apply_language(new_lang)
+            save_settings()  # 儲存新語言設定
+            # 關閉並重新開啟關於對話框以更新所有文字
+            about_win.destroy()
+            show_about_dialog()
+    
+    lang_combo.bind("<<ComboboxSelected>>", on_language_change)
     
     def check_for_updates():
         """檢查更新"""
@@ -1232,16 +1389,16 @@ def show_about_dialog():
         # 在背景執行緒中檢查更新
         threading.Thread(target=check_thread, daemon=True).start()
     
-    tb.Button(button_frame, text="檢查更新", command=check_for_updates, width=10, bootstyle=INFO).pack(side="left", padx=(0, 5))
-    tb.Button(button_frame, text="關閉", command=about_win.destroy, width=8, bootstyle=SECONDARY).pack(side="left")
+    tb.Button(button_frame, text=lang_map["檢查更新"], command=check_for_updates, width=10, bootstyle=INFO).pack(side="left", padx=(0, 5))
+    tb.Button(button_frame, text=lang_map["關閉"], command=about_win.destroy, width=8, bootstyle=SECONDARY).pack(side="left")
 
 # --- row 0 新增「刷新視窗」按鈕（SVG 圖示版）---
 def manual_refresh_window_list():
     if mini_mode_active:
-        log("Mini 模式下無需刷新視窗列表")
+        log(lang_map["Mini 模式下無需刷新視窗列表"])
         return
     update_window_list()
-    log("已刷新視窗列表")
+    log(lang_map["已刷新視窗列表"])
 
 # 建立重新整理圖示
 refresh_icon = """
@@ -1265,7 +1422,7 @@ refresh_label.bind("<Button-1>", lambda e: manual_refresh_window_list())
 def show_schedule_dialog():
     """顯示排程設定視窗"""
     schedule_win = tb.Toplevel(app)
-    schedule_win.title("排程設定")
+    schedule_win.title(lang_map["ChroLens_Portal 排程設定"])
     
     # 根據 DPI 調整對話框大小
     dialog_width = int(600 / dpi_scale)
@@ -1303,7 +1460,7 @@ def show_schedule_dialog():
     control_frame.grid(row=0, column=0, sticky="ew", pady=(0, dialog_padding))
     
     # 分組選擇
-    tb.Label(control_frame, text="分組:").grid(row=0, column=1, padx=(10, 5), sticky="w")
+    tb.Label(control_frame, text=lang_map["選擇分組:"]).grid(row=0, column=1, padx=(10, 5), sticky="w")
     group_var = tk.StringVar(value=group_codes[0])
     group_combo = tb.Combobox(
         control_frame, 
@@ -1315,7 +1472,7 @@ def show_schedule_dialog():
     group_combo.grid(row=0, column=2, padx=(0, 10), sticky="w")
     
     # 時間設定
-    tb.Label(control_frame, text="時間:").grid(row=0, column=3, padx=(10, 5), sticky="w")
+    tb.Label(control_frame, text=lang_map["時間 (HH:MM):"]).grid(row=0, column=3, padx=(10, 5), sticky="w")
     hour_var = tk.StringVar(value="00")
     minute_var = tk.StringVar(value="00")
     
@@ -1340,7 +1497,7 @@ def show_schedule_dialog():
         # 檢查是否已存在相同的排程
         for task in schedule_tasks:
             if task["group"] == group_code and task["time"] == time_str:
-                log(f"排程已存在：{group_display_names[group_code].get()} 於 {time_str}")
+                log(f"{lang_map['排程已存在：']}{group_display_names[group_code].get()} {lang_map['於']} {time_str}")
                 return
         
         schedule_tasks.append({
@@ -1350,7 +1507,7 @@ def show_schedule_dialog():
         })
         update_schedule_list()
         save_settings()  # 儲存排程到設定檔
-        log(f"已新增排程：{group_display_names[group_code].get()} 於 {time_str}")
+        log(f"{lang_map['已新增排程：']}{group_display_names[group_code].get()} {lang_map['於']} {time_str}")
     
     add_btn = tb.Button(control_frame, text="新增", command=add_schedule, bootstyle="success", width=8)
     add_btn.grid(row=0, column=5, padx=(10, 0), sticky="w")
@@ -1397,7 +1554,7 @@ def show_schedule_dialog():
             def toggle_task(index=idx, var=enabled_var):
                 schedule_tasks[index]["enabled"] = var.get()
                 save_settings()
-                log(f"排程 {schedule_tasks[index]['time']} {group_display_names[schedule_tasks[index]['group']].get()} {'已啟用' if var.get() else '已停用'}")
+                log(f"{lang_map['排程']} {schedule_tasks[index]['time']} {group_display_names[schedule_tasks[index]['group']].get()} {lang_map['已啟用'] if var.get() else lang_map['已停用']}")
             
             check = tb.Checkbutton(
                 task_frame, 
@@ -1431,7 +1588,7 @@ def show_schedule_dialog():
                 removed = schedule_tasks.pop(index)
                 update_schedule_list()
                 save_settings()
-                log(f"已刪除排程：{group_display_names[removed['group']].get()} 於 {removed['time']}")
+                log(f"{lang_map['已刪除排程：']}{group_display_names[removed['group']].get()} {lang_map['於']} {removed['time']}")
             
             delete_btn = tb.Button(
                 task_frame,
@@ -1453,9 +1610,9 @@ def show_schedule_dialog():
     def open_task_scheduler():
         try:
             subprocess.Popen("taskschd.msc", shell=True)
-            log("已開啟 Windows 工作排程器")
+            log(lang_map["已開啟 Windows 工作排程器"])
         except Exception as e:
-            log(f"無法開啟工作排程器：{e}")
+            log(f"{lang_map['無法開啟工作排程器：']}{e}")
     
     task_scheduler_btn = tb.Button(
         bottom_frame,
@@ -1483,113 +1640,150 @@ def show_schedule_dialog():
 is_mini_mode = tk.BooleanVar(value=False)
 
 def restore_from_mini():
-    """從 mini 模式還原到一般模式"""
-    is_mini_mode.set(False)
-    mini_btn.config(text="mini")
-    restore_normal_mode()
+    """從 mini 模式還原到一般模式 - 已不需要，mini mode 改用獨立視窗"""
+    global mini_mode_active, mini_window
+    if mini_window:
+        mini_window.close()
+
+class MiniMode:
+    """獨立的 Mini Mode 視窗類別 - 參考 Mimic 的無邊框設計"""
+    def __init__(self, parent):
+        self.parent = parent
+        self.win = tb.Toplevel(parent)
+        self.win.title("ChroLens Portal - Mini")
+        self.win.geometry("600x120")
+        self.win.attributes("-alpha", 0.9)
+        self.win.wm_attributes("-topmost", True)
+        self.win.protocol("WM_DELETE_WINDOW", self.close)
+        
+        # 設定 icon 與主程式一致
+        try:
+            ico_path = resource_path("冥想貓貓.ico")
+            self.win.iconbitmap(ico_path)
+        except Exception as e:
+            print(f"Mini 模式無法設定 icon: {e}")
+        
+        # 可拖曳視窗
+        self.offset_x = 0
+        self.offset_y = 0
+        self.win.bind("<Button-1>", self._start_move)
+        self.win.bind("<B1-Motion>", self._do_move)
+        
+        # 建立主框架，使用最小 padding
+        frm = tb.Frame(self.win, padding=5)
+        frm.pack(fill="both", expand=True)
+        
+        # 讓所有欄位均勻分配
+        for i in range(7):
+            frm.grid_columnconfigure(i, weight=1)
+        
+        group_codes_list = ["A", "B", "C", "D", "E", "F"]
+        
+        # === 第 1 行：返回按鈕和置頂 A~F 6 個按鈕 ===
+        restore_btn = tb.Button(
+            frm,
+            text="↩️",
+            command=self.close,
+            bootstyle="secondary"
+        )
+        restore_btn.grid(row=0, column=0, padx=1, pady=1, sticky="ew")
+        
+        # 置頂 A~F 按鈕
+        for idx, code in enumerate(group_codes_list):
+            btn = tb.Button(
+                frm,
+                text=group_display_names[code].get(),
+                command=lambda c=code: focus_next_in_group(c),
+                bootstyle="info-outline"
+            )
+            btn.grid(row=0, column=idx+1, padx=1, pady=1, sticky="ew")
+        
+        # === 第 2 行：左側 A/B/C 啟動，右側 A/B/C 關閉 ===
+        for idx in range(3):
+            code = group_codes_list[idx]
+            # 啟動按鈕
+            btn = tb.Button(
+                frm,
+                text=group_display_names[code].get(),
+                command=lambda c=code: start_group_opening(c),
+                bootstyle="success-outline"
+            )
+            btn.grid(row=1, column=idx+1, padx=1, pady=1, sticky="ew")
+            
+            # 關閉按鈕
+            btn = tb.Button(
+                frm,
+                text=group_display_names[code].get(),
+                command=lambda c=code: close_group_windows(c),
+                bootstyle="danger-outline"
+            )
+            btn.grid(row=1, column=idx+4, padx=1, pady=1, sticky="ew")
+        
+        # === 第 3 行：左側 D/E/F 啟動，右側 D/E/F 關閉 ===
+        for idx in range(3, 6):
+            code = group_codes_list[idx]
+            # 啟動按鈕
+            btn = tb.Button(
+                frm,
+                text=group_display_names[code].get(),
+                command=lambda c=code: start_group_opening(c),
+                bootstyle="success-outline"
+            )
+            btn.grid(row=2, column=idx-2, padx=1, pady=1, sticky="ew")
+            
+            # 關閉按鈕
+            btn = tb.Button(
+                frm,
+                text=group_display_names[code].get(),
+                command=lambda c=code: close_group_windows(c),
+                bootstyle="danger-outline"
+            )
+            btn.grid(row=2, column=idx+1, padx=1, pady=1, sticky="ew")
+    
+    def _start_move(self, event):
+        """開始拖曳"""
+        self.offset_x = event.x
+        self.offset_y = event.y
+    
+    def _do_move(self, event):
+        """執行拖曳"""
+        x = self.win.winfo_x() + (event.x - self.offset_x)
+        y = self.win.winfo_y() + (event.y - self.offset_y)
+        self.win.geometry(f"+{x}+{y}")
+    
+    def close(self):
+        """關閉 mini 視窗並顯示主程式"""
+        self.win.destroy()
+        global mini_mode_active, mini_window
+        mini_mode_active = False
+        mini_window = None
+        mini_btn.config(text=lang_map["mini"])
+        # 顯示主程式視窗
+        app.deiconify()
+        log(lang_map["已還原一般模式"])
 
 def toggle_mini_mode():
-    if is_mini_mode.get():
-        # 切換回一般模式
-        is_mini_mode.set(False)
-        restore_normal_mode()
+    """切換 mini 模式 - 隱藏主程式視窗，顯示獨立的 mini 視窗"""
+    global mini_mode_active, mini_window
+    
+    if not mini_mode_active:
+        mini_mode_active = True
+        mini_window = MiniMode(app)
+        mini_btn.config(text=lang_map["還原"])
+        # 隱藏主程式視窗
+        app.withdraw()
+        log(lang_map["已進入 mini 模式"])
     else:
-        # 切換為 mini 模式
-        is_mini_mode.set(True)
-        enter_mini_mode()
+        if mini_window:
+            mini_window.close()
 
-def enter_mini_mode():
-    """進入 mini 模式：隱藏除了 row1 和 row8~9 以外的所有元件"""
-    global mini_mode_active
-    mini_mode_active = True
-    
-    # 隱藏 row 0（頂部工具列）
-    top_row_frame.grid_remove()
-    # 隱藏 row 2（分組檔案列）
-    for gf in group_frames:
-        gf.grid_remove()
-    # 隱藏 row 10（檔案與視窗列表）
-    bottom_frame.grid_remove()
-    # 隱藏動態日誌
-    log_text.grid_remove()
-    # 隱藏「置頂切換」文字標籤
-    desc_label.grid_remove()
-    # 隱藏所有快捷鍵輸入框，只保留分組按鈕
-    for show_label, hotkey_entry in show_label_frames:
-        hotkey_entry.pack_forget()
-    # 顯示 mini 還原按鈕
-    mini_restore_frame.grid(row=0, column=0, padx=adaptive_padding, pady=adaptive_padding, sticky="ew")
-    
-    # 調整 mini 模式下的 row 配置，讓按鈕區域緊湊排列
-    frm.grid_rowconfigure(1, weight=0)  # 置頂切換區固定
-    frm.grid_rowconfigure(8, weight=0)  # 按鈕區固定
-    frm.grid_rowconfigure(9, weight=0)  # 按鈕區固定
-    # 移除其他 row 的配置
-    for row_num in [0, 2, 3, 4, 5, 6, 7, 10]:
-        frm.grid_rowconfigure(row_num, weight=0, minsize=0)
-    
-    # 調整 row 1 的 padding，移除多餘空間
-    second_row_frame.grid_configure(pady=(0, adaptive_padding))
-    
-    # 將按鈕區域移到 row 2 位置，緊接在置頂切換區下方
-    btns_outer_frame.grid_configure(row=2, column=1, rowspan=2, columnspan=6, sticky="new", padx=(0, 4), pady=(0, 0))
-    
-    # 調整視窗大小為更緊湊的尺寸（根據 DPI 縮放）
-    mini_width = int(600 / dpi_scale)
-    mini_height = int(120 / dpi_scale)
-    mini_width = max(500, mini_width)
-    mini_height = max(100, mini_height)
-    app.geometry(f"{mini_width}x{mini_height}")
-    log("已進入 mini 模式（降低資源使用）")
-
-def restore_normal_mode():
-    """還原一般模式：顯示所有元件"""
-    global mini_mode_active
-    mini_mode_active = False
-    
-    # 還原響應式 row 配置
-    frm.grid_rowconfigure(0, weight=0)  # 頂部工具列 - 固定
-    frm.grid_rowconfigure(1, weight=0)  # 置頂切換區 - 固定
-    frm.grid_rowconfigure(2, weight=1)  # 分組檔案列 - 可擴展
-    frm.grid_rowconfigure(8, weight=0)  # 按鈕區 - 固定
-    frm.grid_rowconfigure(9, weight=0)  # 按鈕區 - 固定
-    frm.grid_rowconfigure(10, weight=1)  # 檔案/視窗列表 - 可擴展
-    
-    # 還原 row 1 的 padding
-    second_row_frame.grid_configure(pady=(0, 0))
-    
-    # 還原按鈕區域的位置到 row 8
-    btns_outer_frame.grid_configure(row=8, column=1, rowspan=2, columnspan=6, sticky="new", padx=(0, 4), pady=(0, 0))
-    
-    # 顯示 row 0
-    top_row_frame.grid()
-    # 顯示 row 2
-    for idx, gf in enumerate(group_frames):
-        gf.grid()
-    # 顯示 row 10
-    bottom_frame.grid()
-    # 顯示動態日誌
-    log_text.grid()
-    # 顯示「置頂切換」文字標籤
-    desc_label.grid(row=0, column=0, padx=adaptive_padding, pady=adaptive_padding, sticky="ew")
-    # 顯示所有快捷鍵輸入框
-    for show_label, hotkey_entry in show_label_frames:
-        hotkey_entry.pack(side="left", padx=(adaptive_padding, int(5 / dpi_scale)))
-    # 隱藏 mini 還原按鈕
-    mini_restore_frame.grid_remove()
-    # 還原視窗大小（使用計算過的自適應大小）
-    app.geometry(f"{scaled_width}x{scaled_height}")
-    
-    # 還原後立即更新檔案和視窗列表
-    update_file_list()
-    update_window_list()
-    log("已還原一般模式")
+# 舊的 mini mode 函數已移除，改用 MiniMode 類別
 
 # --- 排程按鈕 ---
-schedule_btn = tb.Button(top_row_frame, text="排程", command=show_schedule_dialog, bootstyle="warning", width=6)
+schedule_btn = tb.Button(top_row_frame, text=lang_map["排程"], command=show_schedule_dialog, bootstyle="warning")
 schedule_btn.grid(row=0, column=12, padx=(2,2), sticky="e")
 
-mini_btn = tb.Button(top_row_frame, text="mini", command=toggle_mini_mode, bootstyle=INFO, width=5)
+mini_btn = tb.Button(top_row_frame, text=lang_map["mini"], command=toggle_mini_mode, bootstyle=INFO)
 mini_btn.grid(row=0, column=11, padx=(2,2), sticky="e")
 
 # 更新 mini_restore_label 的點擊事件為實際的還原函數
@@ -1600,13 +1794,13 @@ def refresh_lists():
     """刷新檔案列表和視窗列表"""
     update_file_list()
     update_window_list()
-    log("已刷新檔案和視窗列表")
+    log(lang_map["已刷新檔案和視窗列表"])
 
 refresh_btn = tb.Button(top_row_frame, text="🔄", command=refresh_lists, bootstyle="info", width=3)
 refresh_btn.grid(row=0, column=10, padx=(2,2), sticky="e")
 
 # --- 關於按鈕（原本已存在） ---
-about_btn = tb.Button(top_row_frame, text="關於", command=show_about_dialog, bootstyle=SECONDARY, width=6)
+about_btn = tb.Button(top_row_frame, text=lang_map["關於"], command=show_about_dialog, bootstyle=SECONDARY)
 about_btn.grid(row=0, column=9, padx=(4,2), sticky="e")
 
 
@@ -1645,16 +1839,16 @@ def update_group_hwnd_list(group_code):
 
 def focus_next_in_group(group_code):
     """批次同時置頂分組中的所有視窗並恢復佈局（整合 FancyZones 功能）"""
-    log(f"[快捷鍵] 觸發分組 {group_display_names[group_code].get()}")
+    log(f"{lang_map['[快捷鍵] 觸發分組']} {group_display_names[group_code].get()}")
     
     update_group_hwnd_list(group_code)
     hwnds = group_hwnd_lists[group_code]
     
     if not hwnds:
-        log(f"[快捷鍵] 分組 {group_display_names[group_code].get()} 沒有視窗")
+        log(f"{lang_map['[快捷鍵] 分組']} {group_display_names[group_code].get()} {lang_map['沒有視窗']}")
         return
     
-    log(f"[快捷鍵] 開始置頂並恢復分組 {group_display_names[group_code].get()} 的 {len(hwnds)} 個視窗佈局")
+    log(f"{lang_map['[快捷鍵] 開始置頂並恢復分組']} {group_display_names[group_code].get()} {lang_map['的']} {len(hwnds)} {lang_map['個視窗佈局']}")
     
     def topmost_and_restore_windows():
         """在背景執行緒中批次置頂視窗並恢復佈局"""
@@ -1684,7 +1878,7 @@ def focus_next_in_group(group_code):
                     restored_count += 1
             
             if restored_count > 0:
-                app.after(0, lambda: log(f"已恢復 {restored_count} 個視窗的佈局"))
+                app.after(0, lambda rc=restored_count: log(f"{lang_map['已恢復']} {rc} {lang_map['個視窗的佈局']}"))
             
             # 短暫延遲確保佈局恢復完成
             time.sleep(0.15)
@@ -1721,7 +1915,7 @@ def focus_next_in_group(group_code):
                 except Exception:
                     pass
             
-            app.after(0, lambda: log(f"已完成置頂分組 {group_display_names[group_code].get()} 的所有 {len(hwnds)} 個視窗"))
+            app.after(0, lambda gn=group_display_names[group_code].get(), hwnd_count=len(hwnds): log(f"{lang_map['已完成置頂分組']} {gn} {lang_map['的所有']} {hwnd_count} {lang_map['個視窗']}"))
         except Exception as e:
             app.after(0, lambda msg=f"置頂處理異常: {e}": log(msg))
     
@@ -1759,10 +1953,10 @@ def register_global_hotkeys():
             def create_hotkey_callback(group_code):
                 def callback():
                     try:
-                        log(f"[快捷鍵] {hotkey} 已觸發 -> 分組 {group_display_names[group_code].get()}")
+                        log(f"{lang_map['[快捷鍵]']} {hotkey} {lang_map['已觸發 -> 分組']} {group_display_names[group_code].get()}")
                         focus_next_in_group(group_code)
                     except Exception as e:
-                        log(f"[快捷鍵] 執行錯誤: {e}")
+                        log(f"{lang_map['[快捷鍵] 執行錯誤: ']}{e}")
                 return callback
             
             # 註冊快捷鍵（按下時立即觸發）
@@ -1774,14 +1968,18 @@ def register_global_hotkeys():
             
             hotkey_handlers.append(handler)
             success_count += 1
-            log(f"✓ {hotkey} → 分組 {group_display_names[code].get()}")
+            # log(f"✓ {hotkey} → 分組 {group_display_names[code].get()}")  # 隱藏快捷鍵註冊訊息
             
         except Exception as e:
             log(f"✗ 註冊失敗 {hotkey}: {e}")
     
-    if success_count > 0:
-        log(f"共註冊 {success_count} 個快捷鍵")
-    else:
+    # if success_count > 0:
+    #     log(f"共註冊 {success_count} 個快捷鍵")  # 隱藏快捷鍵註冊訊息
+    # else:
+    #     log("警告：快捷鍵註冊失敗，請以管理員權限執行")
+    
+    # 只在失敗時顯示警告
+    if success_count == 0:
         log("警告：快捷鍵註冊失敗，請以管理員權限執行")
 
 def cleanup_hotkeys():
@@ -1825,10 +2023,10 @@ def open_lnk_target(lnk_path):
         target_path = shortcut.Targetpath
         arguments = shortcut.Arguments
         if target_path:
-            log(f"[捷徑] 解析成功: {target_path}")
+            log(f"{lang_map['[捷徑] 解析成功: ']}{target_path}")
             return target_path, arguments
     except Exception as e:
-        log(f"[捷徑] 方法1失敗: {e}")
+        log(f"{lang_map['[捷徑] 方法1失敗: ']}{e}")
     
     # 方法 2: 使用 pythoncom (備援)
     try:
@@ -1887,18 +2085,18 @@ def open_entry_file(entry):
     file_path = entry.get().strip()
     folder = folder_var.get()
     if not file_path:
-        log("此欄位無檔案名稱")
+        log(lang_map["此欄位無檔案名稱"])
         return
     full_path = os.path.join(folder, file_path)
     if not os.path.exists(full_path):
-        log(f"找不到檔案: {full_path}")
+        log(f"{lang_map['找不到檔案: ']}{full_path}")
         return
     try:
         if full_path.lower().endswith('.lnk'):
             # 解析捷徑
             target, args = open_lnk_target(full_path)
             if target and os.path.exists(target):
-                log(f"開啟捷徑目標: {target} {args}")
+                log(f"{lang_map['開啟捷徑目標: ']}{target} {args}")
                 # 使用 subprocess 執行目標程式
                 if args:
                     subprocess.Popen(f'"{target}" {args}', shell=True)
