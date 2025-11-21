@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# PyInstaller
+*.spec
+
+# 敏感資料
+.github_token
+*.token
+
+# 使用者設定
+chrolens_portal.json
+user_config.json
+
+# 備份
+backup/
+*.bak
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 測試檔案
+test_*.py
+*_test.py
+
+# 臨時文檔
+TEST_*.md
+REPAIR_*.md
+*_NOTES.md
+*_GUIDE.md
+CHANGELOG_*.md
+
+# Windows
+Thumbs.db
+Desktop.ini

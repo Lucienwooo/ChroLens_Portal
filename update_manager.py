@@ -372,8 +372,7 @@ class UpdateManager:
             return len(exe_files) > 0
         else:
             # 開發環境：檢查是否有 .py
-            return os.path.exists(os.path.join(path, 'ChroLens_Portal2.3.py')) or \
-                   os.path.exists(os.path.join(path, 'ChroLens_Portal2.4.py'))
+            return os.path.exists(os.path.join(path, 'ChroLens_Portal.py'))
     
     def _create_update_script(self, source_dir: str, target_dir: str, exe_path: str) -> str:
         """
@@ -382,7 +381,7 @@ class UpdateManager:
         Args:
             source_dir: 更新檔案來源目錄
             target_dir: 目標安裝目錄
-            exe_path: 可執行檔路徑
+            exe_path: 可執行檔路徑（舊版本的路徑，僅用於判斷）
         
         Returns:
             批次腳本的路徑

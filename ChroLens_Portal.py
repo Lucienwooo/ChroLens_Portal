@@ -1,37 +1,105 @@
-### ChroLens_Portal 2.4
-### 2025/11/19 By Lucienwooo
+### 2025/11/21 By Lucienwooo
 ### 視窗管理工具 - 分組啟動、快捷切換、智能布局記憶
 ### 需要管理者權限（會自動要求提升）
 #
-# === 專案文件清理規則（給 AI Agent） ===
-# 重要：本專案應該保持精簡，避免累積測試檔案
+# ============================================================================
+# === 專案文件清理規則（給 AI Agent 的重要指示）===
+# ============================================================================
 # 
-# 【應保留的檔案】
-# - README.md (專案根目錄，主要說明文件)
-# - UPDATE.md (更新說明文檔)
-# - LICENSE (授權文件)
-# 
-# 【應刪除的檔案】（每次修復後清理）
-# - *_test.py, test_*.py (所有測試腳本)
-# - TEST_REPORT.md, REPAIR_REPORT.md, *_NOTES.md (測試報告等臨時文檔)
-# - run_*.py (臨時執行腳本)
-# - backup_*.json (備份設定檔)
+# 🎯 核心原則：保持專案精簡，避免累積測試檔案和臨時文檔
 #
-# 【清理命令】（PowerShell）
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 【✅ 必須保留的檔案】
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 
+# 📄 核心程式檔案：
+#   - ChroLens_Portal.py (主程式)
+#   - update_manager.py (更新管理器)
+#   - update_dialog.py (更新對話框)
+#   - lang.py (多語言支援)
+#   - build_simple.py (打包腳本)
+#
+# 📄 設定與資料：
+#   - chrolens_portal.json (使用者設定檔)
+#   - user_config.json (使用者配置)
+#   - requirements.txt (依賴套件清單)
+#
+# 📄 文檔檔案：
+#   - README.md (專案說明文件 - 根目錄唯一)
+#   - UPDATE.md (版本更新說明)
+#   - LICENSE (授權文件)
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 【❌ 必須刪除的檔案】（每次 AI 操作後清理）
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+# 🗑️ 測試腳本：
+#   - *_test.py (例如: stability_test.py, multi_group_test.py)
+#   - test_*.py (例如: test_update_feature.py)
+#   - run_*.py (例如: run_test.py)
+#
+# 🗑️ 臨時文檔：
+#   - TEST_*.md (例如: TEST_REPORT.md)
+#   - REPAIR_*.md (例如: REPAIR_REPORT.md)
+#   - *_NOTES.md (例如: DEVELOPMENT_NOTES.md)
+#   - *_GUIDE.md (例如: LAYOUT_GUIDE.md, USER_GUIDE.md)
+#   - CHANGELOG_*.md (臨時更新日誌)
+#
+# 🗑️ 備份檔案：
+#   - backup_*.json (例如: backup_settings.json)
+#   - *.bak (任何備份檔案)
+#   - *_backup.* (備份檔案)
+#
+# 🗑️ 臨時檔案：
+#   - __pycache__/ (Python 快取目錄)
+#   - *.pyc, *.pyo (編譯後的 Python 檔案)
+#   - .pytest_cache/ (pytest 快取)
+#   - .coverage (測試覆蓋率檔案)
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 【🔧 自動清理命令】（PowerShell - 在完成任務後執行）
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+# 完整清理命令（複製貼上即可執行）：
+#
+# cd "c:\Users\Lucien\Documents\GitHub\ChroLens_Portal"
 # Remove-Item *_test.py -Force -ErrorAction SilentlyContinue
 # Remove-Item test_*.py -Force -ErrorAction SilentlyContinue
 # Remove-Item run_*.py -Force -ErrorAction SilentlyContinue
-# Remove-Item *_NOTES.md -Force -ErrorAction SilentlyContinue
 # Remove-Item TEST_*.md -Force -ErrorAction SilentlyContinue
 # Remove-Item REPAIR_*.md -Force -ErrorAction SilentlyContinue
+# Remove-Item *_NOTES.md -Force -ErrorAction SilentlyContinue
+# Remove-Item *_GUIDE.md -Force -ErrorAction SilentlyContinue
+# Remove-Item CHANGELOG_*.md -Force -ErrorAction SilentlyContinue
 # Remove-Item backup_*.json -Force -ErrorAction SilentlyContinue
+# Remove-Item *.bak -Force -ErrorAction SilentlyContinue
+# Remove-Item *_backup.* -Force -ErrorAction SilentlyContinue
+# Remove-Item -Recurse -Force __pycache__ -ErrorAction SilentlyContinue
+# Remove-Item *.pyc -Force -ErrorAction SilentlyContinue
+# Remove-Item *.pyo -Force -ErrorAction SilentlyContinue
+# Get-ChildItem *.md  # 顯示剩餘的 .md 檔案（應只有 README.md, UPDATE.md, LICENSE）
+#
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 【⚠️ AI Agent 作業流程】
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#
+# 1. 執行任務（開發、測試、修復等）
+# 2. 測試完成後，立即執行上方的清理命令
+# 3. 驗證只剩下必須保留的檔案
+# 4. 完成任務回報
+#
+# ⚠️  重要：不要保留任何測試檔案或臨時文檔！
+# ⚠️  保持專案清潔是維護品質的關鍵！
+#
+# ============================================================================
 #
 # === 版本更新紀錄 ===
-# [2.5] - 完整多語言支援、UI 自適應、分組關閉日誌翻譯、捷徑解析日誌翻譯
-# [2.4] - Mini 模式優化、語言切換修復、自動清理測試檔案
+# [2.5.1] - 更新功能測試通過、清理規範完善、穩定性優化
+# [2.5] - Mini 模式優化、語言切換修復、自動清理測試檔案
+# [2.4] - 多組視窗佈局記憶功能、FancyZones 整合
 #
 
-CURRENT_VERSION = "2.5"
+CURRENT_VERSION = "2.5.1"
 import os
 import time
 import win32gui
@@ -140,19 +208,35 @@ def cleanup_test_files():
     """清理測試檔案和臨時文檔（保持專案精簡）"""
     import glob
     
-    # 定義需要清理的檔案模式
+    # 定義需要清理的檔案模式（依照上方清理規範）
     cleanup_patterns = [
+        # 測試腳本
         "*_test.py",
         "test_*.py",
         "run_*.py",
-        "*_NOTES.md",
+        # 臨時文檔
         "TEST_*.md",
         "REPAIR_*.md",
-        "backup_*.json"
+        "*_NOTES.md",
+        "*_GUIDE.md",
+        "CHANGELOG_*.md",
+        # 備份檔案
+        "backup_*.json",
+        "*.bak",
+        "*_backup.*",
+        # Python 快取
+        "*.pyc",
+        "*.pyo"
     ]
     
-    # 需要保留的檔案（不被清理）
-    keep_files = ["README.md", "UPDATE.md", "LICENSE", "chrolens_portal.json"]
+    # 需要保留的檔案（白名單）
+    keep_files = [
+        "README.md",
+        "UPDATE.md",
+        "LICENSE",
+        "chrolens_portal.json",
+        "user_config.json"
+    ]
     
     cleaned_count = 0
     for pattern in cleanup_patterns:
