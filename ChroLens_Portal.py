@@ -762,6 +762,16 @@ group_name_edit_combo.grid(row=0, column=4, padx=(8,2), sticky="e")
 group_name_edit_entry.grid(row=0, column=5, padx=(2,2), sticky="e")
 save_btn.grid(row=0, column=6, padx=(8,2), sticky="e")
 
+# 定義更新 group_name_edit_combo 的函數（將在 rebuild_group_buttons 時調用）
+def update_group_name_combo():
+    """更新分組命名下拉選單的選項"""
+    group_name_edit_combo.config(values=group_codes)
+    # 如果當前選中的選項已經不在新的 group_codes 中，重設為第一個
+    current = group_name_edit_combo_var.get()
+    if current not in group_codes:
+        group_name_edit_combo_var.set(group_codes[0] if group_codes else "A")
+        on_group_name_combo_change()
+
 # 綁定事件
 group_name_edit_combo.bind("<<ComboboxSelected>>", on_group_name_combo_change)
 group_name_edit_entry.bind("<FocusIn>", lambda e: (hide_placeholder(), group_name_edit_entry.config(foreground="#fff")))
@@ -928,6 +938,27 @@ combo_width = 3  # 原本是4，縮短1/3
 
 checkbox_vars_entries = []
 
+# 定義更新 row2 所有 combo 選項的函數
+def update_row2_combo_values():
+    """更新 row2 所有分組下拉選單的選項"""
+    new_values = [""] + [group_display_names[c].get() for c in group_codes]
+    for _, var1, var2, var3, var4, combo1, combo2, combo3, combo4 in checkbox_vars_entries:
+        # 暫存原本的值
+        v1, v2, v3, v4 = var1.get(), var2.get(), var3.get(), var4.get()
+        combo1.config(values=new_values)
+        combo2.config(values=new_values)
+        combo3.config(values=new_values)
+        combo4.config(values=new_values)
+        # 如果原值還在新 values 裡，還原；否則清空
+        if v1 not in new_values:
+            var1.set("")
+        if v2 not in new_values:
+            var2.set("")
+        if v3 not in new_values:
+            var3.set("")
+        if v4 not in new_values:
+            var4.set("")
+
 for i in range(15):  # 15行
     row = i % 5
     col = i // 5
@@ -1008,6 +1039,12 @@ def rebuild_group_buttons():
     global group_codes
     count = active_group_count.get()
     group_codes = all_group_codes[:count]
+    
+    # 更新分組命名下拉選單
+    update_group_name_combo()
+    
+    # 更新 row2 的所有 combo 選項
+    update_row2_combo_values()
     
     # 計算按鈕佈局（每行最多 5 個，左半部啟動，右半部關閉）
     buttons_per_row = 5
