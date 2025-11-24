@@ -208,6 +208,11 @@ class UpdateManager:
             self._report_error("沒有可用的更新包下載連結")
             return
         
+        # 檢查是否為打包後的執行檔
+        if not getattr(sys, 'frozen', False):
+            self._report_error("自動更新功能僅支援打包後的執行檔\n請使用 build_simple.py 打包後再測試更新功能")
+            return
+        
         # 在背景執行緒中執行
         thread = threading.Thread(target=self._download_and_install_thread, daemon=True)
         thread.start()
@@ -381,12 +386,16 @@ class UpdateManager:
         Args:
             source_dir: 更新檔案來源目錄
             target_dir: 目標安裝目錄
-            exe_path: 可執行檔路徑（舊版本的路徑，僅用於判斷）
+            exe_path: 可執行檔路徑（用於重啟）
         
         Returns:
             批次腳本的路徑
         """
         script_path = os.path.join(tempfile.gettempdir(), "ChroLens_Update.bat")
+        log_path = os.path.join(target_dir, "update_log.txt")
+        
+        # 確定新版本的執行檔路徑（安裝後的路徑）
+        new_exe_path = os.path.join(target_dir, "ChroLens_Portal.exe")
         
         # 生成備份檔案名稱和 GitHub 連結
         backup_version_txt = f"version{self.current_version}.txt"
@@ -395,69 +404,179 @@ class UpdateManager:
         
         script_content = f"""@echo off
 chcp 65001 >nul
+
+REM 建立日誌檔案
+set "LOG_FILE={log_path}"
+echo ======================================== > "%LOG_FILE%"
+echo ChroLens_Portal 更新程式 >> "%LOG_FILE%"
+echo 時間: %DATE% %TIME% >> "%LOG_FILE%"
+echo ======================================== >> "%LOG_FILE%"
+echo. >> "%LOG_FILE%"
+
 echo ========================================
 echo ChroLens_Portal 更新程式
 echo ========================================
 echo.
 
-REM 等待主程式關閉（最多 10 秒）
+REM 記錄來源和目標目錄
+echo 來源目錄: {source_dir} >> "%LOG_FILE%"
+echo 目標目錄: {target_dir} >> "%LOG_FILE%"
+echo 新執行檔: {new_exe_path} >> "%LOG_FILE%"
+echo. >> "%LOG_FILE%"
+
+REM 等待主程式關閉（最多 5 秒，然後強制終止）
 echo 正在等待程式關閉...
+echo 正在等待程式關閉... >> "%LOG_FILE%"
 set /a count=0
 :wait_loop
 tasklist /FI "IMAGENAME eq ChroLens_Portal.exe" 2>NUL | find /I /N "ChroLens_Portal.exe">NUL
 if "%ERRORLEVEL%"=="0" (
-    if %count% LSS 10 (
+    if %count% LSS 5 (
         timeout /t 1 /nobreak >nul
         set /a count+=1
         goto wait_loop
+    ) else (
+        echo 程式仍在運行，強制終止... >> "%LOG_FILE%"
+        taskkill /F /IM ChroLens_Portal.exe >nul 2>&1
+        timeout /t 2 /nobreak >nul
     )
+) else (
+    echo 程式已關閉 >> "%LOG_FILE%"
 )
 
+REM 額外等待確保程式完全釋放資源
+timeout /t 2 /nobreak >nul
+
 echo 開始更新檔案...
+echo 開始更新檔案... >> "%LOG_FILE%"
 
 REM 建立 backup 資料夾
 if not exist "{target_dir}\\backup" (
+    echo 建立 backup 資料夾 >> "%LOG_FILE%"
     mkdir "{target_dir}\\backup" >nul 2>&1
 )
 
 REM 備份舊版本的 version.txt 到 backup 資料夾
 if exist "{target_dir}\\{backup_version_txt}" (
     echo 備份舊版本檔案...
+    echo 備份舊版本檔案 >> "%LOG_FILE%"
     move /Y "{target_dir}\\{backup_version_txt}" "{target_dir}\\backup\\{backup_version_txt}" >nul 2>&1
 )
 
 REM 在 backup 資料夾生成 GitHub 下載連結檔案
 echo 生成版本資訊...
+echo 生成版本資訊 >> "%LOG_FILE%"
 echo {github_url} > "{target_dir}\\backup\\{github_link_txt}"
 
 REM 刪除舊版 exe（不保留 .exe.old）
 if exist "{target_dir}\\ChroLens_Portal.exe.old" (
+    echo 刪除舊備份檔案 >> "%LOG_FILE%"
     del /F /Q "{target_dir}\\ChroLens_Portal.exe.old" >nul 2>&1
 )
+
+REM 檢查並刪除舊版 exe（多次嘗試）
 if exist "{target_dir}\\ChroLens_Portal.exe" (
+    echo 刪除舊執行檔 >> "%LOG_FILE%"
+    set /a retry=0
+    :delete_loop
     del /F /Q "{target_dir}\\ChroLens_Portal.exe" >nul 2>&1
+    if exist "{target_dir}\\ChroLens_Portal.exe" (
+        if %retry% LSS 3 (
+            echo 刪除失敗，重試中... >> "%LOG_FILE%"
+            timeout /t 1 /nobreak >nul
+            set /a retry+=1
+            goto delete_loop
+        ) else (
+            echo 錯誤: 無法刪除舊執行檔！ >> "%LOG_FILE%"
+            echo 錯誤: 無法刪除舊執行檔！檔案可能被鎖定。
+            pause
+            exit /b 1
+        )
+    ) else (
+        echo 舊執行檔已刪除 >> "%LOG_FILE%"
+    )
 )
 
 REM 複製新檔案（覆蓋所有檔案）
 echo 正在安裝更新...
-xcopy /E /I /Y /Q "{source_dir}\\*" "{target_dir}\\" >nul 2>&1
+echo 正在安裝更新... >> "%LOG_FILE%"
+echo 執行命令: xcopy /E /I /Y "{source_dir}\\*" "{target_dir}\\" >> "%LOG_FILE%"
+
+xcopy /E /I /Y "{source_dir}\\*" "{target_dir}\\" >> "%LOG_FILE%" 2>&1
 
 if errorlevel 1 (
-    echo 更新失敗！
+    echo 錯誤: xcopy 失敗，錯誤代碼: %ERRORLEVEL% >> "%LOG_FILE%"
+    echo 更新失敗！請查看日誌: %LOG_FILE%
+    pause
+    exit /b 1
+) else (
+    echo xcopy 成功 >> "%LOG_FILE%"
+)
+
+REM 驗證新執行檔是否存在
+if exist "{new_exe_path}" (
+    echo 新執行檔已安裝: {new_exe_path} >> "%LOG_FILE%"
+) else (
+    echo 錯誤: 新執行檔不存在！ >> "%LOG_FILE%"
+    echo 錯誤: 新執行檔未安裝成功！
     pause
     exit /b 1
 )
 
 echo 更新完成！
+echo 更新完成！ >> "%LOG_FILE%"
 
 REM 清理臨時檔案
 echo 清理臨時檔案...
+echo 清理臨時檔案... >> "%LOG_FILE%"
 rd /S /Q "{os.path.dirname(source_dir)}" >nul 2>&1
 
 REM 重新啟動程式
 echo 正在重新啟動程式...
-timeout /t 2 /nobreak >nul
-start "" "{exe_path}"
+echo 正在重新啟動程式: {new_exe_path} >> "%LOG_FILE%"
+
+REM 再次驗證執行檔存在
+if not exist "{new_exe_path}" (
+    echo 錯誤: 執行檔不存在，無法啟動！ >> "%LOG_FILE%"
+    echo 錯誤: 執行檔不存在！路徑: {new_exe_path}
+    pause
+    exit /b 1
+)
+
+echo 執行檔存在，準備啟動... >> "%LOG_FILE%"
+timeout /t 3 /nobreak >nul
+
+REM 使用完整路徑啟動程式（使用 start 命令確保非同步執行）
+cd /d "{target_dir}"
+echo 執行命令: start "" "{new_exe_path}" >> "%LOG_FILE%"
+start "ChroLens_Portal" "{new_exe_path}"
+
+if errorlevel 1 (
+    echo 錯誤: 無法啟動程式！錯誤代碼: %ERRORLEVEL% >> "%LOG_FILE%"
+    echo 錯誤: 無法啟動程式！
+    echo 請手動執行: {new_exe_path}
+    pause
+    exit /b 1
+) else (
+    echo 程式啟動命令已執行 >> "%LOG_FILE%"
+    timeout /t 2 /nobreak >nul
+    
+    REM 驗證程式是否真的啟動了
+    timeout /t 2 /nobreak >nul
+    tasklist /FI "IMAGENAME eq ChroLens_Portal.exe" 2>NUL | find /I /N "ChroLens_Portal.exe">NUL
+    if "%ERRORLEVEL%"=="0" (
+        echo 程式已成功啟動 >> "%LOG_FILE%"
+    ) else (
+        echo 警告: 無法確認程式是否啟動 >> "%LOG_FILE%"
+        echo 請檢查: {new_exe_path}
+    )
+)
+
+echo 更新程式執行完成 >> "%LOG_FILE%"
+echo ======================================== >> "%LOG_FILE%"
+
+REM 等待一下確保程式啟動
+timeout /t 1 /nobreak >nul
 
 REM 刪除自己
 (goto) 2>nul & del "%~f0"

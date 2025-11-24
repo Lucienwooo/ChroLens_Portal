@@ -4,7 +4,11 @@ ChroLens_Portal 自動打包並發布到 GitHub
 
 使用方法:
 1. 首次使用需要設定 GitHub Token (一次性設定)
-2. 執行此腳本會自動完成打包並上傳到 GitHub
+2. 更新 CHANGELOG.md 中的版本紀錄
+3. 執行此腳本會自動完成打包並上傳到 GitHub
+   - 從 ChroLens_Portal.py 讀取 CURRENT_VERSION
+   - 從 CHANGELOG.md 讀取對應版本的更新說明
+   - 自動生成 Release Notes 並上傳
 
 需要安裝:
 pip install PyGithub
@@ -102,41 +106,56 @@ class PortalReleaseBuilder:
         return token
     
     def _extract_changelog(self) -> str:
-        """從主程式提取當前版本的更新說明"""
+        """從 CHANGELOG.md 提取當前版本的更新說明"""
+        changelog_file = self.project_dir / "CHANGELOG.md"
+        
+        if not changelog_file.exists():
+            print("  警告: 找不到 CHANGELOG.md")
+            return "本次更新包含功能改進與錯誤修復"
+        
         try:
-            with open(self.main_file, 'r', encoding='utf-8') as f:
+            with open(changelog_file, 'r', encoding='utf-8') as f:
                 content = f.read()
+                lines = content.split('\n')
                 
-                # 尋找版本更新紀錄區段
+                # 尋找當前版本的區段
                 in_version_section = False
+                changelog_lines = []
                 
-                for line in content.split('\n'):
-                    # 找到版本更新紀錄區段
-                    if '版本更新紀錄' in line or '=== 版本更新紀錄 ===' in line:
+                for line in lines:
+                    # 找到當前版本標題
+                    if line.startswith(f"## [{self.version}]"):
                         in_version_section = True
                         continue
                     
+                    # 如果遇到下一個版本標題，停止
+                    if in_version_section and line.startswith("## ["):
+                        break
+                    
+                    # 收集版本內容
                     if in_version_section:
-                        # 找到當前版本的記錄
-                        if f'[{self.version}]' in line:
-                            # 清理行：移除 # 和 = 符號，只保留版本號和描述
-                            clean_line = line.strip()
-                            # 移除開頭的 # 和 =
-                            clean_line = clean_line.lstrip('#').strip()
-                            clean_line = clean_line.lstrip('=').strip()
-                            # 提取 [版本號] - 描述 部分
-                            if ' - ' in clean_line:
-                                version_part, description = clean_line.split(' - ', 1)
-                                return description.strip()
-                            else:
-                                # 如果沒有 " - "，返回整行
-                                return clean_line.strip()
+                        line = line.strip()
+                        # 保留所有內容，包括小標題和列表項目
+                        if line:
+                            # 保留 ### 標題
+                            if line.startswith('### '):
+                                changelog_lines.append('')  # 空行分隔
+                                changelog_lines.append('**' + line[4:] + '**')  # 轉換為粗體
+                            # 保留列表項目
+                            elif line.startswith('- '):
+                                changelog_lines.append(line)
+                            # 保留其他文字
+                            elif not line.startswith('#'):
+                                changelog_lines.append(line)
                 
-                # 如果沒找到，返回預設訊息
-                return "本次更新包含功能改進與錯誤修復"
+                if changelog_lines:
+                    return '\n'.join(changelog_lines)
+                else:
+                    print(f"  警告: 在 CHANGELOG.md 中找不到版本 {self.version} 的記錄")
+                    return "本次更新包含功能改進與錯誤修復"
         
         except Exception as e:
-            print(f"  警告: 無法提取更新日誌: {e}")
+            print(f"  警告: 無法讀取 CHANGELOG.md: {e}")
             return "本次更新包含功能改進與錯誤修復"
     
     def _format_release_notes(self, version_description: str) -> str:
@@ -357,9 +376,43 @@ class PortalReleaseBuilder:
         
         return True
     
+    def _validate_before_build(self):
+        """打包前驗證"""
+        print("\n[0/6] 打包前驗證...")
+        
+        # 檢查 CHANGELOG.md 是否包含當前版本
+        changelog_file = self.project_dir / "CHANGELOG.md"
+        if changelog_file.exists():
+            with open(changelog_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+                if f"## [{self.version}]" not in content:
+                    print(f"  ⚠ 警告: CHANGELOG.md 中找不到版本 {self.version}")
+                    print(f"  請先更新 CHANGELOG.md")
+                    return False
+                else:
+                    print(f"  ✓ CHANGELOG.md 包含版本 {self.version}")
+        else:
+            print(f"  ⚠ 警告: 找不到 CHANGELOG.md")
+        
+        # 檢查版本號格式
+        import re
+        if not re.match(r'^\d+\.\d+(\.\d+)?$', self.version):
+            print(f"  ⚠ 警告: 版本號格式不正確: {self.version}")
+            return False
+        else:
+            print(f"  ✓ 版本號格式正確: {self.version}")
+        
+        print("  ✓ 驗證通過\n")
+        return True
+    
     def build_and_release(self):
         """執行完整流程"""
         try:
+            # 驗證
+            if not self._validate_before_build():
+                print("\n驗證失敗，已取消打包")
+                sys.exit(1)
+            
             self.clean()
             self.build_main()
             self.copy_files()

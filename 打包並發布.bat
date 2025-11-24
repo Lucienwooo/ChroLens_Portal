@@ -5,6 +5,9 @@ echo ChroLens_Portal 自動打包與發布工具
 echo ========================================
 echo.
 
+REM 切換到腳本所在目錄
+cd /d "%~dp0"
+
 REM 檢查 Python
 python --version >nul 2>&1
 if errorlevel 1 (
@@ -26,6 +29,18 @@ if errorlevel 1 (
     echo 正在安裝 PyGithub...
     pip install PyGithub
 )
+
+REM 清理測試檔案
+echo.
+echo 清理測試檔案...
+del /F /Q *_test.py >nul 2>&1
+del /F /Q test_*.py >nul 2>&1
+del /F /Q diagnose_*.py >nul 2>&1
+del /F /Q TEST_*.md >nul 2>&1
+del /F /Q UPDATE_TEST_GUIDE.md >nul 2>&1
+del /F /Q UPDATE_FIX_SUMMARY.md >nul 2>&1
+del /F /Q quick_test_update.ps1 >nul 2>&1
+echo ✓ 測試檔案已清理
 
 echo.
 echo 開始打包與發布...

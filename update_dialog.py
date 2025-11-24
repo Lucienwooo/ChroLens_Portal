@@ -290,12 +290,23 @@ class UpdateDialog:
     
     def _restart_app(self):
         """重啟應用程式"""
+        import sys
         # 關閉對話框
         self.dialog.destroy()
         
-        # 關閉主視窗（這會觸發更新腳本）
-        self.parent.quit()
-        self.parent.destroy()
+        # 關閉主視窗
+        try:
+            self.parent.quit()
+        except:
+            pass
+        
+        try:
+            self.parent.destroy()
+        except:
+            pass
+        
+        # 強制退出程式（確保批次腳本可以接管）
+        sys.exit(0)
     
     def _on_error(self, error: str):
         """錯誤回調"""

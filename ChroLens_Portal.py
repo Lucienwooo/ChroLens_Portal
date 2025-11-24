@@ -26,6 +26,7 @@
 #
 # 📄 文檔檔案：
 #   - README.md (專案說明文件 - 根目錄唯一)
+#   - CHANGELOG.md (版本更新紀錄)
 #   - UPDATE.md (版本更新說明)
 #   - LICENSE (授權文件)
 #
@@ -77,7 +78,7 @@
 # Remove-Item -Recurse -Force __pycache__ -ErrorAction SilentlyContinue
 # Remove-Item *.pyc -Force -ErrorAction SilentlyContinue
 # Remove-Item *.pyo -Force -ErrorAction SilentlyContinue
-# Get-ChildItem *.md  # 顯示剩餘的 .md 檔案（應只有 README.md, UPDATE.md, LICENSE）
+# Get-ChildItem *.md  # 顯示剩餘的 .md 檔案（應只有 README.md, CHANGELOG.md, UPDATE.md, LICENSE）
 #
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 【⚠️ AI Agent 作業流程】
@@ -94,12 +95,10 @@
 # ============================================================================
 #
 # === 版本更新紀錄 ===
-# [2.5.1] - 更新功能測試通過、清理規範完善、穩定性優化
-# [2.5] - Mini 模式優化、語言切換修復、自動清理測試檔案
-# [2.4] - 多組視窗佈局記憶功能、FancyZones 整合
+# 詳見 CHANGELOG.md 檔案
 #
 
-CURRENT_VERSION = "2.5.1"
+CURRENT_VERSION = "2.5.2"
 import os
 import time
 import win32gui
@@ -300,14 +299,26 @@ else:  # 100% 或更低
     scaled_width = base_width
     scaled_height = base_height
 
-# 設定最小視窗大小以確保所有元件可見（確保能顯示完整 3 欄）
-min_width = 1300  # 增加最小寬度以確保 3 欄完整顯示
-min_height = 680  # 增加最小高度
-scaled_width = max(min_width, scaled_width)
+# 設定固定視窗大小（強制固定寬度）
+fixed_width = 1400  # 固定寬度
+min_height = 800  # 增加高度以容納分組欄位
+scaled_width = fixed_width
 scaled_height = max(min_height, scaled_height)
 
 app.geometry(f"{scaled_width}x{scaled_height}")
-app.minsize(min_width, min_height)  # 設定最小視窗大小
+app.minsize(fixed_width, min_height)  # 設定最小視窗大小
+app.maxsize(fixed_width, 9999)  # 強制固定寬度，只允許調整高度
+
+# 監聽視窗大小變化，強制保持固定寬度
+def on_window_resize(event=None):
+    """視窗大小改變時的處理，強制保持固定寬度"""
+    if event and event.widget == app:
+        current_width = app.winfo_width()
+        if current_width != fixed_width:
+            app.geometry(f"{fixed_width}x{app.winfo_height()}")
+    app.update_idletasks()
+
+app.bind("<Configure>", on_window_resize)
 
 # 根據 DPI 調整 padding（高 DPI 時使用更合適的 padding）
 if dpi_scale >= 1.5:
@@ -324,17 +335,25 @@ frm.pack(fill="both", expand=True)
 # 設定響應式行配置
 frm.grid_rowconfigure(0, weight=0)  # 頂部工具列 - 固定
 frm.grid_rowconfigure(1, weight=0)  # 置頂切換區 - 固定
-frm.grid_rowconfigure(2, weight=1)  # 分組檔案列 - 可擴展
+frm.grid_rowconfigure(2, weight=0)  # 分組檔案列 - 固定高度
 frm.grid_rowconfigure(8, weight=0)  # 按鈕區 - 固定
 frm.grid_rowconfigure(9, weight=0)  # 按鈕區 - 固定
-frm.grid_rowconfigure(10, weight=1)  # 檔案/視窗列表 - 可擴展
+frm.grid_rowconfigure(10, weight=1)  # 檔案/視窗列表 - 可擴展（填滿剩餘空間）
 
-# --- 分組與快捷鍵 ---
-group_codes = ["A", "B", "C", "D", "E", "F"]
-group_display_names = {c: tk.StringVar(value=c) for c in group_codes}
-# 正確的預設快捷鍵
-default_hotkeys = ["Alt+1", "Alt+2", "Alt+3", "Alt+q", "Alt+w", "Alt+e"]
-group_hotkeys = [tk.StringVar(value=default_hotkeys[i]) for i in range(6)]
+# 設定響應式欄配置
+frm.grid_columnconfigure(0, weight=0, minsize=150)  # 日誌框固定寬度
+for col_idx in range(1, 8):
+    frm.grid_columnconfigure(col_idx, weight=1, uniform="column")  # 其他欄位平均分配
+
+# --- 分組與快捷鍵（動態支援 2-10 組）---
+all_group_codes = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
+all_default_hotkeys = ["Alt+1", "Alt+2", "Alt+3", "Alt+q", "Alt+w", "Alt+e", "Alt+a", "Alt+s", "Alt+d", "Alt+f"]
+
+# 當前使用的分組數量（預設 6 組）
+active_group_count = tk.IntVar(value=6)
+group_codes = all_group_codes[:active_group_count.get()]
+group_display_names = {c: tk.StringVar(value=c) for c in all_group_codes}
+group_hotkeys = [tk.StringVar(value=all_default_hotkeys[i]) for i in range(10)]
 group_buttons = {}
 close_buttons = {}
 
@@ -353,15 +372,15 @@ schedule_tasks = []
 # 儲存格式: { "group_code": { "file_name": {"x": int, "y": int, "width": int, "height": int, "state": str} } }
 window_layouts = {}
 
-# --- row 0：頂部工具列 ---
+# --- row 0：頂部工具列（響應式增強）---
 top_row_frame = tb.Frame(frm, padding=adaptive_padding)
 top_row_frame.grid(row=0, column=0, columnspan=8, sticky="ew", pady=(adaptive_padding, adaptive_padding))
-# 讓工具列可以自動擴展，避免按鈕被壓迫
-for col_idx in range(13):  # 涵蓋所有按鈕欄位
-    if col_idx in [0, 1]:  # 路徑和間隔區域可以擴展
-        top_row_frame.grid_columnconfigure(col_idx, weight=1)
-    else:  # 其他按鈕區域固定大小
-        top_row_frame.grid_columnconfigure(col_idx, weight=0)
+# 左側固定寬度，右側靠右對齊
+for col_idx in range(3):
+    top_row_frame.grid_columnconfigure(col_idx, weight=0)  # 左側固定
+top_row_frame.grid_columnconfigure(3, weight=1)  # 中間可擴展，推動右側靠右
+for col_idx in range(4, 14):
+    top_row_frame.grid_columnconfigure(col_idx, weight=0)  # 右側固定
 
 folder_var = tb.StringVar(value="")
 interval_var = tb.StringVar(value="4")
@@ -375,15 +394,30 @@ def choose_folder():
 
 folder_frame = tb.Frame(top_row_frame, padding=(adaptive_padding, adaptive_padding))
 folder_frame.grid(row=0, column=0, sticky="w", padx=(0, 4))
-tb.Entry(folder_frame, textvariable=folder_var, width=25).grid(row=0, column=0, padx=(adaptive_padding, adaptive_padding), sticky="ew")
-choose_path_btn = tb.Button(folder_frame, text=lang_map["選擇開啟路徑"], command=lambda: choose_folder(), bootstyle=SECONDARY)
-choose_path_btn.grid(row=0, column=1, padx=(adaptive_padding, 0), sticky="ew")
+tb.Entry(folder_frame, textvariable=folder_var, width=30).grid(row=0, column=0, padx=(adaptive_padding, adaptive_padding))
+choose_path_btn = tb.Button(folder_frame, text=lang_map["選擇開啟路徑"], command=lambda: choose_folder(), bootstyle=SECONDARY, width=12)
+choose_path_btn.grid(row=0, column=1, padx=(adaptive_padding, 0))
 
+# 啟動間隔（調換到前面）
 interval_frame = tb.Frame(top_row_frame, padding=(adaptive_padding, adaptive_padding))
 interval_frame.grid(row=0, column=1, sticky="w", padx=(0, 4))
-interval_label = tb.Label(interval_frame, text=lang_map["間隔秒數:"])
+interval_label = tb.Label(interval_frame, text="啟動間隔(秒):")
 interval_label.grid(row=0, column=0, sticky="w")
 tb.Entry(interval_frame, textvariable=interval_var, width=3).grid(row=0, column=1, padx=(adaptive_padding, 0), sticky="w")
+
+# 分組數量選擇器（調換到後面）
+group_count_frame = tb.Frame(top_row_frame, padding=(adaptive_padding, adaptive_padding))
+group_count_frame.grid(row=0, column=2, sticky="w", padx=(0, 4))
+group_count_label = tb.Label(group_count_frame, text="分組數量:")
+group_count_label.grid(row=0, column=0, sticky="w")
+group_count_combo = tb.Combobox(
+    group_count_frame,
+    textvariable=active_group_count,
+    values=[2, 3, 4, 5, 6, 7, 8, 9, 10],
+    width=3,
+    state="readonly"
+)
+group_count_combo.grid(row=0, column=1, padx=(adaptive_padding, 0), sticky="w")
 
 # === 視窗佈局記憶功能 (FancyZones) ===
 def capture_window_layout(group_code):
@@ -497,31 +531,180 @@ def restore_window_layout(group_code, hwnd, window_text):
     log(f"{lang_map['[佈局] 未找到匹配的佈局：']}{window_text}")
     return False
 
-# 新增「存檔」按鈕（捕獲當前所有分組視窗佈局）
+# 新增「存檔」按鈕（捕獲當前視窗並選擇要儲存到哪些分組）
 def manual_save():
-    log("=" * 50)
-    log(lang_map["開始捕獲所有分組的視窗佈局..."])
-    total_captured = 0
+    """彈出對話框讓使用者選擇要儲存當前視窗佈局到哪些分組"""
     
-    # 捕獲所有當前活躍分組的視窗佈局
-    for group_code in group_codes:
-        files = get_group_files(group_code)
-        if files:
-            log(f"{lang_map['分組']} {group_display_names[group_code].get()} {lang_map['包含檔案: ']}{files}")
-            before_count = len(window_layouts.get(group_code, {}))
-            capture_window_layout(group_code)
-            after_count = len(window_layouts.get(group_code, {}))
-            captured = after_count - before_count
-            if captured > 0:
-                total_captured += captured
-        else:
-            log(f"{lang_map['分組']} {group_display_names[group_code].get()} {lang_map['沒有檔案，跳過']}")
+    # 建立選擇對話框
+    save_dialog = tk.Toplevel(app)
+    save_dialog.title("選擇儲存目標分組")
+    save_dialog.geometry("400x300")
+    save_dialog.transient(app)
+    save_dialog.grab_set()
     
-    save_settings()
-    log(f"{lang_map['已手動儲存設定檔，共捕獲']} {total_captured} {lang_map['個新視窗佈局']}")
-    log("=" * 50)
+    # 置中顯示
+    save_dialog.update_idletasks()
+    screen_width = save_dialog.winfo_screenwidth()
+    screen_height = save_dialog.winfo_screenheight()
+    x = (screen_width // 2) - 200
+    y = (screen_height // 2) - 150
+    save_dialog.geometry(f"400x300+{x}+{y}")
+    
+    # 標題
+    title_label = tb.Label(
+        save_dialog,
+        text="將當前開啟的視窗佈局儲存到：",
+        font=("Microsoft JhengHei", 12, "bold")
+    )
+    title_label.pack(pady=(20, 10))
+    
+    # 提示文字
+    hint_label = tb.Label(
+        save_dialog,
+        text="（可選擇多個分組，當前視窗配置會套用到所選分組）",
+        font=("Microsoft JhengHei", 9),
+        foreground="#888"
+    )
+    hint_label.pack(pady=(0, 15))
+    
+    # 複選框區域
+    checkbox_frame = tb.Frame(save_dialog)
+    checkbox_frame.pack(fill="both", expand=True, padx=30, pady=10)
+    
+    # 為每個分組創建複選框
+    group_check_vars = {}
+    for idx, code in enumerate(group_codes):
+        var = tk.BooleanVar(value=False)
+        group_check_vars[code] = var
+        
+        # 檢查該分組是否有檔案
+        files = get_group_files(code)
+        has_files = len(files) > 0
+        
+        cb = tb.Checkbutton(
+            checkbox_frame,
+            text=f"{group_display_names[code].get()} ({len(files)} 個檔案)",
+            variable=var,
+            bootstyle="success-round-toggle",
+            state="normal" if has_files else "disabled"
+        )
+        cb.pack(anchor="w", pady=5)
+    
+    # 按鈕區域
+    button_frame = tb.Frame(save_dialog)
+    button_frame.pack(pady=(10, 20))
+    
+    def do_save():
+        """執行儲存"""
+        selected_groups = [code for code, var in group_check_vars.items() if var.get()]
+        
+        if not selected_groups:
+            messagebox.showwarning("未選擇分組", "請至少選擇一個分組來儲存視窗佈局", parent=save_dialog)
+            return
+        
+        save_dialog.destroy()
+        
+        log("=" * 50)
+        log(f"開始捕獲視窗佈局並儲存到 {len(selected_groups)} 個分組...")
+        total_captured = 0
+        
+        # 先收集當前所有視窗的位置
+        captured_windows = {}
+        my_hwnd = app.winfo_id()
+        
+        def enum_handler(hwnd, _):
+            if not win32gui.IsWindowVisible(hwnd):
+                return
+            if hwnd == my_hwnd:
+                return
+            
+            window_text = win32gui.GetWindowText(hwnd)
+            if not window_text.strip():
+                return
+            
+            try:
+                rect = win32gui.GetWindowRect(hwnd)
+                placement = win32gui.GetWindowPlacement(hwnd)
+                
+                captured_windows[window_text.lower()] = {
+                    "text": window_text,
+                    "x": rect[0],
+                    "y": rect[1],
+                    "width": rect[2] - rect[0],
+                    "height": rect[3] - rect[1],
+                    "state": placement[1]
+                }
+            except Exception as e:
+                pass
+        
+        win32gui.EnumWindows(enum_handler, None)
+        log(f"找到 {len(captured_windows)} 個可見視窗")
+        
+        # 將視窗配置套用到選中的分組
+        for group_code in selected_groups:
+            files = get_group_files(group_code)
+            if not files:
+                log(f"分組 {group_display_names[group_code].get()} 沒有檔案，跳過")
+                continue
+            
+            # 為這個分組匹配視窗
+            group_layout = {}
+            for f in files:
+                if f:
+                    file_key = os.path.splitext(os.path.basename(f))[0].lower()
+                    # 在捕獲的視窗中尋找匹配
+                    for win_text_lower, win_data in captured_windows.items():
+                        if file_key in win_text_lower:
+                            group_layout[f] = {
+                                "x": win_data["x"],
+                                "y": win_data["y"],
+                                "width": win_data["width"],
+                                "height": win_data["height"],
+                                "state": win_data["state"]
+                            }
+                            log(f"  [{group_display_names[group_code].get()}] {os.path.basename(f)} -> {win_data['width']}x{win_data['height']} at ({win_data['x']},{win_data['y']})")
+                            total_captured += 1
+                            break
+            
+            if group_layout:
+                if group_code not in window_layouts:
+                    window_layouts[group_code] = {}
+                window_layouts[group_code] = group_layout
+                log(f"已儲存 {len(group_layout)} 個視窗到分組 {group_display_names[group_code].get()}")
+            else:
+                log(f"分組 {group_display_names[group_code].get()} 沒有找到匹配的視窗")
+        
+        save_settings()
+        log(f"已手動儲存設定檔，共儲存 {total_captured} 個視窗佈局到 {len(selected_groups)} 個分組")
+        log("=" * 50)
+    
+    def cancel_save():
+        """取消儲存"""
+        save_dialog.destroy()
+    
+    # 確定和取消按鈕
+    save_btn = tb.Button(
+        button_frame,
+        text="確定儲存",
+        command=do_save,
+        bootstyle="success",
+        width=12
+    )
+    save_btn.pack(side="left", padx=5)
+    
+    cancel_btn = tb.Button(
+        button_frame,
+        text="取消",
+        command=cancel_save,
+        bootstyle="secondary",
+        width=12
+    )
+    cancel_btn.pack(side="left", padx=5)
+    
+    # 綁定 ESC 鍵取消
+    save_dialog.bind("<Escape>", lambda e: cancel_save())
 
-save_btn = tb.Button(top_row_frame, text=lang_map["存檔"], command=manual_save, bootstyle="info")
+save_btn = tb.Button(top_row_frame, text=lang_map["存檔"], command=manual_save, bootstyle="success")
 save_btn.grid(row=0, column=5, padx=(4,2), sticky="e")
 
 # --- 新增：分組名稱修改區 ---
@@ -575,9 +758,9 @@ group_name_edit_entry = tb.Entry(
 )
 group_name_edit_entry.placeholder = False
 
-group_name_edit_combo.grid(row=0, column=3, padx=(8,2), sticky="w")
-group_name_edit_entry.grid(row=0, column=4, padx=(2,2), sticky="w")
-save_btn.grid(row=0, column=5, padx=(8,2), sticky="e")
+group_name_edit_combo.grid(row=0, column=4, padx=(8,2), sticky="e")
+group_name_edit_entry.grid(row=0, column=5, padx=(2,2), sticky="e")
+save_btn.grid(row=0, column=6, padx=(8,2), sticky="e")
 
 # 綁定事件
 group_name_edit_combo.bind("<<ComboboxSelected>>", on_group_name_combo_change)
@@ -588,15 +771,12 @@ group_name_edit_entry.bind("<Return>", on_group_name_edit_submit)
 # 初始化顯示 placeholder
 show_placeholder()
 
-# --- row 1：分組置頂顯示切換區 ---
+# --- row 1：分組置頂顯示切換區（填滿整行）---
 show_label_frames = []
 second_row_frame = tb.Frame(frm)
-second_row_frame.grid(row=1, column=0, columnspan=8, sticky="ew")
-for i in range(7):
-    second_row_frame.grid_columnconfigure(i, weight=1)
+second_row_frame.grid(row=1, column=0, columnspan=8, sticky="nsew", padx=0, pady=0)
 show_label_font = tkfont.Font(family="Microsoft JhengHei", size=12)
-topmost_toggle_btn = tb.Label(second_row_frame, text=lang_map["置頂切換"], anchor="center", font=show_label_font)
-topmost_toggle_btn.grid(row=0, column=0, padx=2, pady=2, sticky="ew")
+# 置頂切換按鈕區域將平鈖整行寬度
 
 # 建立 mini 模式的還原按鈕（初始隱藏）
 # 使用 Frame + Label 來顯示較大的 emoji 箭頭
@@ -615,35 +795,87 @@ mini_restore_label.bind("<Button-1>", lambda e: None)
 # 初始時不顯示這個按鈕
 # mini_restore_btn.grid(row=0, column=0, padx=2, pady=2, sticky="ew")
 
-for idx, code in enumerate(group_codes):
-    frame = tb.Frame(second_row_frame, borderwidth=max(1, int(2 / dpi_scale)), relief="groove", padding=2)
-    frame.grid(row=0, column=idx+1, padx=adaptive_padding, pady=adaptive_padding, sticky="ew")
-    # 置頂切換按鈕（黑底藍框，滑鼠移過才變藍）
-    show_btn = tb.Button(
-        frame, 
-        text=group_display_names[code].get(), 
-        command=lambda c=code: focus_next_in_group(c),
-        bootstyle="info-outline",
-        width=6
-    )
-    show_btn.pack(side="left", padx=(adaptive_padding, 0))
-    # 快捷鍵文字框 - 設定深色背景和樣式
-    hotkey_entry = tb.Entry(
-        frame, 
-        textvariable=group_hotkeys[idx], 
-        width=8, 
-        state="readonly", 
-        justify="center", 
-        font=show_label_font,
-        foreground="#ffffff",  # 白色文字
-        style="Dark.TEntry"  # 使用深色樣式
-    )
-    hotkey_entry.pack(side="left", padx=(adaptive_padding, int(5 / dpi_scale)))
-    def make_on_key(idx):
-        return lambda event, i=idx: on_hotkey_entry_key(event, i)
-    hotkey_entry.bind("<Key>", make_on_key(idx))
-    hotkey_entry.bind("<Button-1>", lambda e, entry=hotkey_entry: entry.focus_set())
-    show_label_frames.append((show_btn, hotkey_entry))
+def rebuild_topmost_buttons():
+    """根據當前分組數量重建置頂切換按鈕（每行最多5個，最多2行，置中對齊）"""
+    # 清除所有舊按鈕
+    for widget in second_row_frame.winfo_children():
+        widget.destroy()
+    
+    show_label_frames.clear()
+    
+    count = active_group_count.get()
+    buttons_per_row = 5  # 每行最多 5 個
+    
+    # 清空所有欄位配置
+    for i in range(buttons_per_row):
+        second_row_frame.grid_columnconfigure(i, weight=0)
+    
+    # 配置行（最多 2 行）
+    second_row_frame.grid_rowconfigure(0, weight=0)
+    second_row_frame.grid_rowconfigure(1, weight=0)
+    
+    # 計算第一行和第二行各有幾個按鈕
+    first_row_count = min(count, buttons_per_row)
+    second_row_count = max(0, count - buttons_per_row)
+    
+    # 生成新按鈕
+    for idx, code in enumerate(group_codes):
+        row = idx // buttons_per_row  # 0-4 在第 0 行，5-9 在第 1 行
+        col_in_row = idx % buttons_per_row
+        
+        # 計算實際欄位位置（置中對齊）
+        if row == 0:
+            # 第一行：居中顯示
+            col_offset = (buttons_per_row - first_row_count) // 2
+            actual_col = col_offset + col_in_row
+        else:
+            # 第二行：居中顯示
+            col_offset = (buttons_per_row - second_row_count) // 2
+            actual_col = col_offset + (idx - buttons_per_row)
+        
+        frame = tb.Frame(second_row_frame, borderwidth=max(1, int(2 / dpi_scale)), relief="groove", padding=2)
+        frame.grid(row=row, column=actual_col, padx=adaptive_padding, pady=adaptive_padding, sticky="ew")
+        
+        # 讓 frame 內部平均分配空間
+        frame.grid_columnconfigure(0, weight=1)
+        frame.grid_columnconfigure(1, weight=0)
+        
+        # 置頂切換按鈕（使用 wraplength 防止文字過長）
+        show_btn = tb.Button(
+            frame, 
+            text=group_display_names[code].get(), 
+            command=lambda c=code: focus_next_in_group(c),
+            bootstyle="info-outline"
+        )
+        show_btn.grid(row=0, column=0, sticky="ew", padx=(0, adaptive_padding))
+        # 確保按鈕文字不會影響寬度，超出部分截斷
+        show_btn.config(compound="center")
+        
+        # 快捷鍵文字框（固定寬度）
+        hotkey_entry = tb.Entry(
+            frame, 
+            textvariable=group_hotkeys[idx], 
+            width=8, 
+            state="readonly", 
+            justify="center", 
+            font=show_label_font,
+            foreground="#ffffff",
+            style="Dark.TEntry"
+        )
+        hotkey_entry.grid(row=0, column=1, sticky="e")
+        
+        def make_on_key(idx):
+            return lambda event, i=idx: on_hotkey_entry_key(event, i)
+        hotkey_entry.bind("<Key>", make_on_key(idx))
+        hotkey_entry.bind("<Button-1>", lambda e, entry=hotkey_entry: entry.focus_set())
+        show_label_frames.append((show_btn, hotkey_entry))
+    
+    # 配置有按鈕的欄位為平均分配
+    if first_row_count > 0:
+        for i in range(buttons_per_row):
+            second_row_frame.grid_columnconfigure(i, weight=1, uniform="topmost_col")
+
+# 注意：rebuild_topmost_buttons() 的初始化將在所有函數定義後執行
 
 def update_show_labels(*args):
     for idx, code in enumerate(group_codes):
@@ -759,38 +991,77 @@ style.configure("Dark.TEntry",
 log_text = tb.Text(frm, height=12, width=18, state="disabled", wrap="word", font=tkfont.Font(family="Microsoft JhengHei", size=scaled_font_size))
 log_text.grid(row=8, column=0, rowspan=3, sticky="nsew", padx=(0, int(8 / dpi_scale)), pady=(0, 0))
 
-# --- row 8~9 啟動/關閉分組按鈕區域 ---
+# --- row 8~9 啟動/關閉分組按鈕區域（動態生成，平均擴散）---
 btns_outer_frame = tb.Frame(frm)
-btns_outer_frame.grid(row=8, column=1, rowspan=2, columnspan=6, sticky="new", padx=(0, 4), pady=(0, 0))
-for i in range(6):
-    btns_outer_frame.grid_columnconfigure(i, weight=1)
-group_btn_grid = [
-    (8, 0, "啟動", "A", "success-outline", lambda: start_group_opening("A")),
-    (8, 1, "啟動", "B", "success-outline", lambda: start_group_opening("B")),
-    (8, 2, "啟動", "C", "success-outline", lambda: start_group_opening("C")),
-    (8, 3, "關閉", "A", "danger-outline", lambda: close_group_windows("A")),
-    (8, 4, "關閉", "B", "danger-outline", lambda: close_group_windows("B")),
-    (8, 5, "關閉", "C", "danger-outline", lambda: close_group_windows("C")),
-    (9, 0, "啟動", "D", "success-outline", lambda: start_group_opening("D")),
-    (9, 1, "啟動", "E", "success-outline", lambda: start_group_opening("E")),
-    (9, 2, "啟動", "F", "success-outline", lambda: start_group_opening("F")),
-    (9, 3, "關閉", "D", "danger-outline", lambda: close_group_windows("D")),
-    (9, 4, "關閉", "E", "danger-outline", lambda: close_group_windows("E")),
-    (9, 5, "關閉", "F", "danger-outline", lambda: close_group_windows("F")),
-]
-for row, col, text, code, bootstyle, cmd in group_btn_grid:
-    btn = tb.Button(
-        btns_outer_frame,
-        text=f"{group_display_names[code].get()}",
-        bootstyle=bootstyle,
-        command=cmd,
-        width=8
-    )
-    btn.grid(row=row-8, column=col, padx=(adaptive_padding, adaptive_padding), pady=(adaptive_padding, adaptive_padding), sticky="ew")
-    if text == "啟動":
-        group_buttons[code] = btn
-    else:
-        close_buttons[code] = btn
+btns_outer_frame.grid(row=8, column=1, rowspan=2, columnspan=7, sticky="nsew", padx=(0, 4), pady=(0, 0))
+
+def rebuild_group_buttons():
+    """根據當前分組數量重建啟動/關閉按鈕（每行 5 個，最多 2 行，左邊啟動右邊關閉）"""
+    # 清除舊按鈕
+    for widget in btns_outer_frame.winfo_children():
+        widget.destroy()
+    
+    group_buttons.clear()
+    close_buttons.clear()
+    
+    # 更新 group_codes
+    global group_codes
+    count = active_group_count.get()
+    group_codes = all_group_codes[:count]
+    
+    # 計算按鈕佈局（每行最多 5 個，左半部啟動，右半部關閉）
+    buttons_per_row = 5
+    total_cols = buttons_per_row * 2  # 左 5 個啟動 + 右 5 個關閉
+    
+    # 配置所有欄位平均分配空間
+    for i in range(total_cols):
+        btns_outer_frame.grid_columnconfigure(i, weight=1, uniform="btn_col")
+    
+    # 配置行（最多 2 行）
+    btns_outer_frame.grid_rowconfigure(0, weight=1)
+    btns_outer_frame.grid_rowconfigure(1, weight=1)
+    
+    # 生成啟動按鈕（左半部，每行 5 個）
+    for idx, code in enumerate(group_codes):
+        row = idx // buttons_per_row  # 0-4 在第 0 行，5-9 在第 1 行
+        col = idx % buttons_per_row  # 0-4
+        start_btn = tb.Button(
+            btns_outer_frame,
+            text=f"{group_display_names[code].get()}",
+            bootstyle="success-outline",
+            command=lambda c=code: start_group_opening(c),
+            compound="center"  # 確保文字不影響寬度
+        )
+        start_btn.grid(row=row, column=col, padx=adaptive_padding, pady=adaptive_padding, sticky="nsew")
+        group_buttons[code] = start_btn
+    
+    # 生成關閉按鈕（右半部，每行 5 個）
+    for idx, code in enumerate(group_codes):
+        row = idx // buttons_per_row
+        col = (idx % buttons_per_row) + buttons_per_row  # 偏移 5 欄到右半部
+        close_btn = tb.Button(
+            btns_outer_frame,
+            text=f"{group_display_names[code].get()}",
+            bootstyle="danger-outline",
+            command=lambda c=code: close_group_windows(c),
+            compound="center"  # 確保文字不影響寬度
+        )
+        close_btn.grid(row=row, column=col, padx=adaptive_padding, pady=adaptive_padding, sticky="nsew")
+        close_buttons[code] = close_btn
+    
+    # 更新置頂切換區的按鈕
+    rebuild_topmost_buttons()
+    
+    # 如果 mini 模式已開啟，也需要更新
+    if mini_mode_active and mini_window:
+        mini_window.rebuild_buttons()
+
+def on_group_count_change(event=None):
+    """分組數量改變時的處理"""
+    rebuild_group_buttons()
+    save_settings()
+
+# 注意：group_count_combo 的綁定和按鈕初始化將在所有函數定義後執行
 
 # --- row 10 檔案名稱/視窗名稱列表 ---
 bottom_frame = tb.Frame(frm)
@@ -1267,8 +1538,7 @@ def apply_language(new_lang):
     # 更新第二行按鈕
     save_btn.config(text=lang_map["存檔"])
     
-    # 更新第二行的置頂切換按鈕
-    topmost_toggle_btn.config(text=lang_map["置頂切換"])
+    # 置頂切換標籤已移除
     
     # 注意：部分 UI 元件需要在程式啟動時就使用 lang_map 來建立
     # 目前已更新的元件會在切換語言時即時更新
@@ -1730,12 +2000,11 @@ def restore_from_mini():
         mini_window.close()
 
 class MiniMode:
-    """獨立的 Mini Mode 視窗類別 - 參考 Mimic 的無邊框設計"""
+    """獨立的 Mini Mode 視窗類別 - 動態響應分組數量"""
     def __init__(self, parent):
         self.parent = parent
         self.win = tb.Toplevel(parent)
         self.win.title("ChroLens Portal - Mini")
-        self.win.geometry("600x120")
         self.win.attributes("-alpha", 0.9)
         self.win.wm_attributes("-topmost", True)
         self.win.protocol("WM_DELETE_WINDOW", self.close)
@@ -1754,75 +2023,119 @@ class MiniMode:
         self.win.bind("<B1-Motion>", self._do_move)
         
         # 建立主框架，使用最小 padding
-        frm = tb.Frame(self.win, padding=5)
-        frm.pack(fill="both", expand=True)
+        self.frm = tb.Frame(self.win, padding=5)
+        self.frm.pack(fill="both", expand=True)
         
-        # 讓所有欄位均勻分配
-        for i in range(7):
-            frm.grid_columnconfigure(i, weight=1)
+        # 初始化按鈕
+        self.rebuild_buttons()
+    
+    def show_desktop(self):
+        """顯示桌面（最小化所有視窗）"""
+        try:
+            # 使用 Windows API 顯示桌面
+            import ctypes
+            # 模擬 Win+D 快捷鍵
+            ctypes.windll.user32.keybd_event(0x5B, 0, 0, 0)  # Win key down
+            ctypes.windll.user32.keybd_event(0x44, 0, 0, 0)  # D key down
+            ctypes.windll.user32.keybd_event(0x44, 0, 2, 0)  # D key up
+            ctypes.windll.user32.keybd_event(0x5B, 0, 2, 0)  # Win key up
+            log("已顯示桌面")
+        except Exception as e:
+            log(f"顯示桌面失敗：{e}")
+    
+    def rebuild_buttons(self):
+        """根據當前分組數量重建 mini 模式按鈕"""
+        # 清除所有舊按鈕
+        for widget in self.frm.winfo_children():
+            widget.destroy()
         
-        group_codes_list = ["A", "B", "C", "D", "E", "F"]
+        # 獲取當前分組數量
+        count = active_group_count.get()
+        current_group_codes = all_group_codes[:count]
         
-        # === 第 1 行：返回按鈕和置頂 A~F 6 個按鈕 ===
-        restore_btn = tb.Button(
-            frm,
-            text="↩️",
-            command=self.close,
-            bootstyle="secondary"
-        )
-        restore_btn.grid(row=0, column=0, padx=1, pady=1, sticky="ew")
+        # 計算視窗大小（響應式）
+        buttons_per_row = 5
+        rows_needed = (count + buttons_per_row - 1) // buttons_per_row
+        total_rows = rows_needed + 1  # 置頂行 + 啟動/關閉行（同一行）
         
-        # 置頂 A~F 按鈕
-        for idx, code in enumerate(group_codes_list):
+        # 強制固定視窗寬度，不允許調整
+        # 寬度需要容納：1個特殊按鈕 + count個置頂按鈕（第一行最寬）
+        # 或：1個特殊按鈕 + buttons_per_row個啟動 + buttons_per_row個關閉
+        button_width = 70
+        # 取第一行和第二行中較寬的那個
+        first_row_width = (1 + count) * button_width + 100  # 特殊按鈕 + 所有置頂按鈕
+        second_row_width = (1 + buttons_per_row * 2) * button_width + 100  # 特殊按鈕 + 啟動 + 關閉
+        mini_fixed_width = max(600, first_row_width, second_row_width)
+        total_height = 60 + total_rows * 38  # 減少高度
+        self.win.geometry(f"{mini_fixed_width}x{total_height}")
+        # 強制固定 mini 視窗寬度
+        self.win.minsize(mini_fixed_width, total_height)
+        self.win.maxsize(mini_fixed_width, 9999)
+        
+        # 配置欄位（返回按鈕1欄 + 最多buttons_per_row*2欄用於啟動/關閉按鈕）
+        # 取第一行和第二行需要的最大欄位數
+        max_cols = max(1 + count, 1 + buttons_per_row * 2)
+        for i in range(max_cols):
+            self.frm.grid_columnconfigure(i, weight=1, uniform="mini_col")
+        
+        # 配置行高（3行）
+        self.frm.grid_rowconfigure(0, weight=1, uniform="mini_row")  # 置頂行
+        self.frm.grid_rowconfigure(1, weight=1, uniform="mini_row")  # 啟動/關閉行1
+        self.frm.grid_rowconfigure(2, weight=1, uniform="mini_row")  # 啟動/關閉行2
+        
+        # === 第 1 行：置頂切換按鈕（平鋪寬度）===
+        # 置頂切換按鈕
+        for idx, code in enumerate(current_group_codes):
             btn = tb.Button(
-                frm,
+                self.frm,
                 text=group_display_names[code].get(),
                 command=lambda c=code: focus_next_in_group(c),
                 bootstyle="info-outline"
             )
-            btn.grid(row=0, column=idx+1, padx=1, pady=1, sticky="ew")
+            btn.grid(row=0, column=idx+1, padx=1, pady=1, sticky="nsew")
         
-        # === 第 2 行：左側 A/B/C 啟動，右側 A/B/C 關閉 ===
-        for idx in range(3):
-            code = group_codes_list[idx]
-            # 啟動按鈕
+        # === 第 2-3 行：返回按鈕（跨3行，佔1.5行高度）===
+        restore_btn = tb.Button(
+            self.frm,
+            text="↩️",
+            command=self.close,
+            bootstyle="secondary"
+        )
+        restore_btn.grid(row=0, column=0, rowspan=2, padx=1, pady=1, sticky="nsew")
+        
+        # === 第 2-3 行：顯示桌面按鈕（跨3行，佔1.5行高度）===
+        show_desktop_btn = tb.Button(
+            self.frm,
+            text="🖥️",
+            command=self.show_desktop,
+            bootstyle="warning"
+        )
+        show_desktop_btn.grid(row=2, column=0, rowspan=2, padx=1, pady=1, sticky="nsew")
+        
+        # === 第 2-3 行：啟動按鈕（左邊，每行最多 5 個）===
+        for idx, code in enumerate(current_group_codes):
+            row = 1 + (idx // buttons_per_row)
+            col = (idx % buttons_per_row) + 1
             btn = tb.Button(
-                frm,
+                self.frm,
                 text=group_display_names[code].get(),
                 command=lambda c=code: start_group_opening(c),
                 bootstyle="success-outline"
             )
-            btn.grid(row=1, column=idx+1, padx=1, pady=1, sticky="ew")
-            
-            # 關閉按鈕
-            btn = tb.Button(
-                frm,
-                text=group_display_names[code].get(),
-                command=lambda c=code: close_group_windows(c),
-                bootstyle="danger-outline"
-            )
-            btn.grid(row=1, column=idx+4, padx=1, pady=1, sticky="ew")
+            btn.grid(row=row, column=col, padx=1, pady=1, sticky="nsew")
         
-        # === 第 3 行：左側 D/E/F 啟動，右側 D/E/F 關閉 ===
-        for idx in range(3, 6):
-            code = group_codes_list[idx]
-            # 啟動按鈕
+        # === 第 2-3 行：關閉按鈕（右邊，緊接著啟動按鈕）===
+        offset_col = 1 + buttons_per_row  # 啟動按鈕右邊
+        for idx, code in enumerate(current_group_codes):
+            row = 1 + (idx // buttons_per_row)
+            col = offset_col + (idx % buttons_per_row)
             btn = tb.Button(
-                frm,
-                text=group_display_names[code].get(),
-                command=lambda c=code: start_group_opening(c),
-                bootstyle="success-outline"
-            )
-            btn.grid(row=2, column=idx-2, padx=1, pady=1, sticky="ew")
-            
-            # 關閉按鈕
-            btn = tb.Button(
-                frm,
+                self.frm,
                 text=group_display_names[code].get(),
                 command=lambda c=code: close_group_windows(c),
                 bootstyle="danger-outline"
             )
-            btn.grid(row=2, column=idx+1, padx=1, pady=1, sticky="ew")
+            btn.grid(row=row, column=col, padx=1, pady=1, sticky="nsew")
     
     def _start_move(self, event):
         """開始拖曳"""
@@ -2200,5 +2513,11 @@ def open_entry_file(entry):
             os.startfile(full_path)
     except Exception as e:
         log(f"開啟檔案失敗: {full_path}，錯誤：{e}")
+
+# --- 延遲初始化：在所有函數定義完成後執行 ---
+# 綁定分組數量選擇器事件並初始化按鈕
+group_count_combo.bind("<<ComboboxSelected>>", on_group_count_change)
+rebuild_topmost_buttons()  # 先初始化置頂切換按鈕
+rebuild_group_buttons()    # 再初始化啟動/關閉按鈕
 
 app.mainloop()
