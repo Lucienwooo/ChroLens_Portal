@@ -535,10 +535,17 @@ def restore_window_layout(group_code, hwnd, window_text):
 def manual_save():
     """彈出對話框讓使用者選擇要儲存當前視窗佈局到哪些分組"""
     
+    # 根據分組數量計算對話框高度（每個分組約 35px，加上頂部和底部空間）
+    count = active_group_count.get()
+    base_height = 180  # 頂部標題、提示文字、底部按鈕的基本高度
+    checkbox_height = count * 40  # 每個複選框的高度
+    dialog_height = base_height + checkbox_height
+    dialog_height = min(dialog_height, 700)  # 最大高度 700px
+    dialog_height = max(dialog_height, 300)  # 最小高度 300px
+    
     # 建立選擇對話框
     save_dialog = tk.Toplevel(app)
     save_dialog.title("選擇儲存目標分組")
-    save_dialog.geometry("400x300")
     save_dialog.transient(app)
     save_dialog.grab_set()
     
@@ -547,8 +554,8 @@ def manual_save():
     screen_width = save_dialog.winfo_screenwidth()
     screen_height = save_dialog.winfo_screenheight()
     x = (screen_width // 2) - 200
-    y = (screen_height // 2) - 150
-    save_dialog.geometry(f"400x300+{x}+{y}")
+    y = (screen_height // 2) - (dialog_height // 2)
+    save_dialog.geometry(f"400x{dialog_height}+{x}+{y}")
     
     # 標題
     title_label = tb.Label(
@@ -1489,7 +1496,7 @@ def save_settings():
         data = {
             "folder": folder_var.get(),
             "interval": interval_var.get(),
-            "group_display_names": {c: group_display_names[c].get() for c in group_codes},
+            "group_display_names": {c: group_display_names[c].get() for c in all_group_codes},  # 修正：儲存所有分組（A-J）
             "group_hotkeys": [v.get() for v in group_hotkeys],
             "checkbox_entries": [entry.get() for entry, *_ in checkbox_vars_entries],
             "group_var1": [var1.get() for _, var1, _, _, _, *_ in checkbox_vars_entries],
@@ -1591,7 +1598,8 @@ def load_settings():
             data = json.load(f)
         folder_var.set(data.get("folder", folder_var.get()))
         interval_var.set(data.get("interval", interval_var.get()))
-        for c in group_codes:
+        # 修正：載入所有分組（A-J）的名稱
+        for c in all_group_codes:
             group_display_names[c].set(data.get("group_display_names", {}).get(c, c))
         for i, v in enumerate(data.get("group_hotkeys", [])):
             if i < len(group_hotkeys):
@@ -1661,8 +1669,8 @@ def delayed_load_settings():
     app.after(0, lambda: [load_settings(), apply_language(current_language), update_file_list(), update_window_list()])
 threading.Thread(target=delayed_load_settings, daemon=True).start()
 
-# 綁定分組名稱變動時自動更新
-for c in group_codes:
+# 綺定分組名稱變動時自動更新（修正：追蹤所有分組 A-J）
+for c in all_group_codes:
     group_display_names[c].trace_add("write", update_group_name)
 
 # 新增：視窗滾動條隱藏與顯示
