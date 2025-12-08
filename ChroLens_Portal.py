@@ -98,7 +98,7 @@
 # 詳見 CHANGELOG.md 檔案
 #
 
-CURRENT_VERSION = "2.5.2"
+CURRENT_VERSION = "2.5.3"
 import os
 import time
 import win32gui
@@ -349,10 +349,27 @@ for col_idx in range(1, 8):
 all_group_codes = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]
 all_default_hotkeys = ["Alt+1", "Alt+2", "Alt+3", "Alt+q", "Alt+w", "Alt+e", "Alt+a", "Alt+s", "Alt+d", "Alt+f"]
 
+# Dracula 配色方案（VS Code Dracula Theme）+ 自訂顏色
+DRACULA_COLORS = {
+    "粉紅": "#FF79C6",    # Pink
+    "紫色": "#BD93F9",    # Purple
+    "青色": "#8BE9FD",    # Cyan
+    "綠色": "#50FA7B",    # Green
+    "橙色": "#FFB86C",    # Orange
+    "紅色": "#FF5555",    # Red
+    "黃色": "#F1FA8C",    # Yellow
+    "藍紫": "#6272A4",    # Comment (藍灰)
+    "白色": "#F8F8F2",    # Foreground
+    "無色": "",             # 不設定顏色
+    "自訂": "custom"      # 自訂顏色（特殊標記）
+}
+
 # 當前使用的分組數量（預設 6 組）
 active_group_count = tk.IntVar(value=6)
 group_codes = all_group_codes[:active_group_count.get()]
 group_display_names = {c: tk.StringVar(value=c) for c in all_group_codes}
+group_colors = {c: tk.StringVar(value="無色") for c in all_group_codes}  # 分組顏色設定
+group_custom_colors = {c: "" for c in all_group_codes}  # 儲存自訂顏色的十六進位值
 group_hotkeys = [tk.StringVar(value=all_default_hotkeys[i]) for i in range(10)]
 group_buttons = {}
 close_buttons = {}
@@ -394,9 +411,10 @@ def choose_folder():
 
 folder_frame = tb.Frame(top_row_frame, padding=(adaptive_padding, adaptive_padding))
 folder_frame.grid(row=0, column=0, sticky="w", padx=(0, 4))
-tb.Entry(folder_frame, textvariable=folder_var, width=30).grid(row=0, column=0, padx=(adaptive_padding, adaptive_padding))
+# 隱藏路徑顯示框，只保留按鈕
+# tb.Entry(folder_frame, textvariable=folder_var, width=30).grid(row=0, column=0, padx=(adaptive_padding, adaptive_padding))
 choose_path_btn = tb.Button(folder_frame, text=lang_map["選擇開啟路徑"], command=lambda: choose_folder(), bootstyle=SECONDARY, width=12)
-choose_path_btn.grid(row=0, column=1, padx=(adaptive_padding, 0))
+choose_path_btn.grid(row=0, column=0, padx=(adaptive_padding, 0))
 
 # 啟動間隔（調換到前面）
 interval_frame = tb.Frame(top_row_frame, padding=(adaptive_padding, adaptive_padding))
@@ -744,6 +762,66 @@ def on_group_name_combo_change(event=None):
     else:
         group_name_edit_entry.insert(0, val)
         hide_placeholder()
+    
+    # 更新顏色選擇器
+    current_color = group_colors[code].get()
+    if current_color in DRACULA_COLORS:
+        group_color_combo.set(current_color)
+    else:
+        group_color_combo.set("無色")
+    
+    # 更新顏色預覽
+    update_color_preview(code)
+
+def update_color_preview(code=None):
+    """更新顏色預覽框"""
+    if code is None:
+        code = group_name_edit_combo_var.get()
+    color_name = group_colors[code].get()
+    if color_name == "自訂":
+        # 顯示自訂顏色
+        custom_color = group_custom_colors.get(code, "")
+        if custom_color:
+            group_color_preview.config(background=custom_color)
+        else:
+            group_color_preview.config(background="#2b3e50")
+    elif color_name in DRACULA_COLORS:
+        color_hex = DRACULA_COLORS[color_name]
+        if color_hex:
+            group_color_preview.config(background=color_hex)
+        else:
+            group_color_preview.config(background="#2b3e50")
+    else:
+        group_color_preview.config(background="#2b3e50")
+
+def open_color_chooser():
+    """開啟顏色選擇器"""
+    from tkinter import colorchooser
+    
+    code = group_name_edit_combo_var.get()
+    # 獲取當前顏色作為預設值
+    current_color_name = group_colors[code].get()
+    if current_color_name == "自訂":
+        initial_color = group_custom_colors.get(code, "#FF79C6")
+    elif current_color_name in DRACULA_COLORS:
+        initial_color = DRACULA_COLORS[current_color_name]
+        if not initial_color:
+            initial_color = "#FF79C6"
+    else:
+        initial_color = "#FF79C6"
+    
+    # 開啟顏色選擇器
+    color = colorchooser.askcolor(title="選擇分組顏色", initialcolor=initial_color)
+    if color[1]:  # color[1] 是十六進位顏色值
+        # 儲存自訂顏色
+        group_custom_colors[code] = color[1]
+        group_colors[code].set("自訂")
+        group_color_combo.set("自訂")
+        update_color_preview(code)
+        log(f"分組 {code} 自訂顏色已設為：{color[1]}")
+        # 立即更新按鈕顏色
+        update_button_colors()
+        save_settings()
 
 def on_group_name_edit_submit(event=None):
     code = group_name_edit_combo_var.get()
@@ -756,6 +834,21 @@ def on_group_name_edit_submit(event=None):
     else:
         group_display_names[code].set(entry_val)
         hide_placeholder()
+    
+    # 保存顏色設定
+    new_color = group_color_combo.get()
+    if new_color == "自訂":
+        # 如果選擇自訂，開啟顏色選擇器
+        open_color_chooser()
+    elif new_color in DRACULA_COLORS:
+        group_colors[code].set(new_color)
+        # 清除自訂顏色（如果有）
+        if code in group_custom_colors:
+            group_custom_colors[code] = ""
+        update_color_preview(code)
+        log(f"分組 {code} 顏色已設為：{new_color}")
+        # 立即更新按鈕顏色
+        update_button_colors()
 
 group_name_edit_combo = tb.Combobox(
     top_row_frame, values=group_codes, textvariable=group_name_edit_combo_var, width=3, state="readonly"
@@ -765,9 +858,36 @@ group_name_edit_entry = tb.Entry(
 )
 group_name_edit_entry.placeholder = False
 
+# 顏色選擇下拉選單（Dracula 配色 + 自訂）
+group_color_combo = tb.Combobox(
+    top_row_frame,
+    values=list(DRACULA_COLORS.keys()),
+    width=6,
+    state="readonly"
+)
+group_color_combo.current(9)  # 預設選擇「無色」
+
+# 自訂顏色按鈕（顯示當前顏色）
+group_color_preview = tb.Label(
+    top_row_frame,
+    text="  ",
+    width=3,
+    relief="solid",
+    borderwidth=1,
+    background="#2b3e50",  # 預設背景
+    cursor="hand2"  # 游標變手指
+)
+# 綁定點擊事件
+group_color_preview.bind("<Button-1>", lambda e: open_color_chooser())
+
 group_name_edit_combo.grid(row=0, column=4, padx=(8,2), sticky="e")
 group_name_edit_entry.grid(row=0, column=5, padx=(2,2), sticky="e")
-save_btn.grid(row=0, column=6, padx=(8,2), sticky="e")
+group_color_combo.grid(row=0, column=6, padx=(2,2), sticky="e")  # 顏色選擇器
+group_color_preview.grid(row=0, column=7, padx=(2,2), sticky="e")  # 顏色預覽
+save_btn.grid(row=0, column=8, padx=(8,2), sticky="e")
+
+# 綁定顏色選擇器變化事件
+group_color_combo.bind("<<ComboboxSelected>>", lambda e: update_color_preview())
 
 # 定義更新 group_name_edit_combo 的函數（將在 rebuild_group_buttons 時調用）
 def update_group_name_combo():
@@ -784,6 +904,7 @@ group_name_edit_combo.bind("<<ComboboxSelected>>", on_group_name_combo_change)
 group_name_edit_entry.bind("<FocusIn>", lambda e: (hide_placeholder(), group_name_edit_entry.config(foreground="#fff")))
 group_name_edit_entry.bind("<FocusOut>", lambda e: (show_placeholder() if not group_name_edit_entry.get().strip() else None, on_group_name_edit_submit()))
 group_name_edit_entry.bind("<Return>", on_group_name_edit_submit)
+group_color_combo.bind("<<ComboboxSelected>>", lambda e: on_group_name_edit_submit())
 
 # 初始化顯示 placeholder
 show_placeholder()
@@ -1096,14 +1217,73 @@ def rebuild_group_buttons():
     # 更新置頂切換區的按鈕
     rebuild_topmost_buttons()
     
+    # 更新所有按鈕顏色
+    update_button_colors()
+    
     # 如果 mini 模式已開啟，也需要更新
     if mini_mode_active and mini_window:
         mini_window.rebuild_buttons()
 
-def on_group_count_change(event=None):
-    """分組數量改變時的處理"""
-    rebuild_group_buttons()
-    save_settings()
+def update_button_colors():
+    """根據分組顏色設定更新所有按鈕的顏色"""
+    # 為每個顏色創建自定義樣式
+    for code in group_codes:
+        color_name = group_colors[code].get()
+        
+        # 決定使用的顏色
+        if color_name == "自訂":
+            # 使用自訂顏色
+            color_hex = group_custom_colors.get(code, "")
+        else:
+            # 使用預設 Dracula 顏色
+            color_hex = DRACULA_COLORS.get(color_name, "")
+        
+        if color_hex:
+            # 創建自定義樣式名稱
+            success_style = f"Group{code}.success.TButton"
+            danger_style = f"Group{code}.danger.TButton"
+            info_style = f"Group{code}.info.TButton"
+            
+            # 配置自定義樣式（使用 ttkbootstrap 的 Style）
+            try:
+                style.configure(success_style, background=color_hex, foreground="#282A36", bordercolor=color_hex)
+                style.configure(danger_style, background=color_hex, foreground="#282A36", bordercolor=color_hex)
+                style.configure(info_style, background=color_hex, foreground="#282A36", bordercolor=color_hex)
+                
+                # 配置按鈕懸停和按下狀態
+                style.map(success_style,
+                    background=[('active', color_hex), ('pressed', color_hex)],
+                    foreground=[('active', '#282A36'), ('pressed', '#282A36')])
+                style.map(danger_style,
+                    background=[('active', color_hex), ('pressed', color_hex)],
+                    foreground=[('active', '#282A36'), ('pressed', '#282A36')])
+                style.map(info_style,
+                    background=[('active', color_hex), ('pressed', color_hex)],
+                    foreground=[('active', '#282A36'), ('pressed', '#282A36')])
+            except Exception as e:
+                print(f"配置樣式失敗: {e}")
+            
+            # 更新啟動按鈕
+            if code in group_buttons:
+                group_buttons[code].configure(style=success_style)
+            
+            # 更新關閉按鈕
+            if code in close_buttons:
+                close_buttons[code].configure(style=danger_style)
+            
+            # 更新置頂切換按鈕
+            for idx, btn_code in enumerate(group_codes):
+                if btn_code == code and idx < len(show_label_frames):
+                    show_label_frames[idx][0].configure(style=info_style)
+        else:
+            # 恢復預設樣式
+            if code in group_buttons:
+                group_buttons[code].configure(bootstyle="success-outline")
+            if code in close_buttons:
+                close_buttons[code].configure(bootstyle="danger-outline")
+            for idx, btn_code in enumerate(group_codes):
+                if btn_code == code and idx < len(show_label_frames):
+                    show_label_frames[idx][0].configure(bootstyle="info-outline")
 
 # 注意：group_count_combo 的綁定和按鈕初始化將在所有函數定義後執行
 
@@ -1496,7 +1676,10 @@ def save_settings():
         data = {
             "folder": folder_var.get(),
             "interval": interval_var.get(),
+            "active_group_count": active_group_count.get(),  # 儲存分組數量
             "group_display_names": {c: group_display_names[c].get() for c in all_group_codes},  # 修正：儲存所有分組（A-J）
+            "group_colors": {c: group_colors[c].get() for c in all_group_codes},  # 儲存分組顏色
+            "group_custom_colors": {c: group_custom_colors.get(c, "") for c in all_group_codes},  # 儲存自訂顏色
             "group_hotkeys": [v.get() for v in group_hotkeys],
             "checkbox_entries": [entry.get() for entry, *_ in checkbox_vars_entries],
             "group_var1": [var1.get() for _, var1, _, _, _, *_ in checkbox_vars_entries],
@@ -1598,9 +1781,20 @@ def load_settings():
             data = json.load(f)
         folder_var.set(data.get("folder", folder_var.get()))
         interval_var.set(data.get("interval", interval_var.get()))
+        
+        # 載入分組數量（必須在載入分組名稱之前）
+        saved_group_count = data.get("active_group_count", 6)
+        active_group_count.set(saved_group_count)
+        
         # 修正：載入所有分組（A-J）的名稱
         for c in all_group_codes:
             group_display_names[c].set(data.get("group_display_names", {}).get(c, c))
+        # 載入所有分組的顏色
+        for c in all_group_codes:
+            group_colors[c].set(data.get("group_colors", {}).get(c, "無色"))
+        # 載入自訂顏色
+        for c in all_group_codes:
+            group_custom_colors[c] = data.get("group_custom_colors", {}).get(c, "")
         for i, v in enumerate(data.get("group_hotkeys", [])):
             if i < len(group_hotkeys):
                 group_hotkeys[i].set(v)
@@ -1634,6 +1828,15 @@ def load_settings():
         
         update_show_labels()
         update_group_name()
+        
+        # 載入完成後重建按鈕（以反映正確的分組數量）
+        try:
+            rebuild_group_buttons()
+            # 重建後更新按鈕顏色
+            update_button_colors()
+        except:
+            # 如果 rebuild_group_buttons 還未定義（初次載入），忽略錯誤
+            pass
     except Exception as e:
         # 只在 log 函數存在時才記錄錯誤
         try:
@@ -1644,18 +1847,29 @@ def load_settings():
 def on_any_change(*args):
     save_settings()
 
+# 當分組數量變更時，需要重建按鈕
+def on_group_count_change(*args):
+    save_settings()
+    rebuild_group_buttons()
+
 folder_var.trace_add("write", on_any_change)
 interval_var.trace_add("write", on_any_change)
-for c in group_codes:
+active_group_count.trace_add("write", on_group_count_change)  # 追蹤分組數量變更並重建按鈕
+# 修正：追蹤所有分組（A-J）的名稱變更，而非只追蹤當前啟用的分組
+for c in all_group_codes:
     group_display_names[c].trace_add("write", on_any_change)
+    group_colors[c].trace_add("write", on_any_change)  # 追蹤顏色變更
 for v in group_hotkeys:
     v.trace_add("write", on_any_change)
 for entry, *_ in checkbox_vars_entries:
     entry.bind("<FocusOut>", lambda e: save_settings())
     entry.bind("<KeyRelease>", lambda e: save_settings())
-for _, var1, var2, *_ in checkbox_vars_entries:
+# 修正：追蹤所有 4 個分組變數（var1, var2, var3, var4）
+for _, var1, var2, var3, var4, *_ in checkbox_vars_entries:
     var1.trace_add("write", on_any_change)
     var2.trace_add("write", on_any_change)
+    var3.trace_add("write", on_any_change)
+    var4.trace_add("write", on_any_change)
 
 # 關閉時自動儲存
 atexit.register(save_settings)
@@ -1731,7 +1945,7 @@ def show_about_dialog():
     author_frame = tb.Frame(frm)
     author_frame.pack(anchor="w", pady=(8, 6))
     tb.Label(author_frame, text="Created by Lucienwooo ", font=("Microsoft JhengHei", 11)).pack(side="left")
-    kofi_link = tk.Label(author_frame, text="(好啦給你一點錢錢)", font=("Microsoft JhengHei", 10, "underline"), fg="#FF5E5B", cursor="hand2")
+    kofi_link = tk.Label(author_frame, text="(好啦給你錢錢)", font=("Microsoft JhengHei", 10, "underline"), fg="#FF5E5B", cursor="hand2")
     kofi_link.pack(side="left")
     kofi_link.bind("<Button-1>", lambda e: os.startfile("https://ko-fi.com/B0B51FBVA8"))
     
@@ -2056,8 +2270,12 @@ class MiniMode:
         
         # 設定 icon 與主程式一致
         try:
-            ico_path = resource_path("冥想貓貓.ico")
-            self.win.iconbitmap(ico_path)
+            if hasattr(sys, '_MEIPASS'):
+                ico_path = os.path.join(sys._MEIPASS, "冥想貓貓.ico")
+            else:
+                ico_path = "冥想貓貓.ico"
+            if os.path.exists(ico_path):
+                self.win.iconbitmap(ico_path)
         except Exception as e:
             print(f"Mini 模式無法設定 icon: {e}")
         
@@ -2131,12 +2349,25 @@ class MiniMode:
         # === 第 1 行：置頂切換按鈕（平鋪寬度）===
         # 置頂切換按鈕
         for idx, code in enumerate(current_group_codes):
-            btn = tb.Button(
-                self.frm,
-                text=group_display_names[code].get(),
-                command=lambda c=code: focus_next_in_group(c),
-                bootstyle="info-outline"
-            )
+            color_name = group_colors[code].get()
+            color_hex = DRACULA_COLORS.get(color_name, "")
+            
+            if color_hex:
+                # 使用自定義樣式
+                info_style = f"Group{code}.info.TButton"
+                btn = tb.Button(
+                    self.frm,
+                    text=group_display_names[code].get(),
+                    command=lambda c=code: focus_next_in_group(c),
+                    style=info_style
+                )
+            else:
+                btn = tb.Button(
+                    self.frm,
+                    text=group_display_names[code].get(),
+                    command=lambda c=code: focus_next_in_group(c),
+                    bootstyle="info-outline"
+                )
             btn.grid(row=0, column=idx+1, padx=1, pady=1, sticky="nsew")
         
         # === 第 2-3 行：返回按鈕（跨3行，佔1.5行高度）===
@@ -2159,27 +2390,55 @@ class MiniMode:
         
         # === 第 2-3 行：啟動按鈕（左邊，每行最多 5 個）===
         for idx, code in enumerate(current_group_codes):
+            color_name = group_colors[code].get()
+            color_hex = DRACULA_COLORS.get(color_name, "")
+            
             row = 1 + (idx // buttons_per_row)
             col = (idx % buttons_per_row) + 1
-            btn = tb.Button(
-                self.frm,
-                text=group_display_names[code].get(),
-                command=lambda c=code: start_group_opening(c),
-                bootstyle="success-outline"
-            )
+            
+            if color_hex:
+                # 使用自定義樣式
+                success_style = f"Group{code}.success.TButton"
+                btn = tb.Button(
+                    self.frm,
+                    text=group_display_names[code].get(),
+                    command=lambda c=code: start_group_opening(c),
+                    style=success_style
+                )
+            else:
+                btn = tb.Button(
+                    self.frm,
+                    text=group_display_names[code].get(),
+                    command=lambda c=code: start_group_opening(c),
+                    bootstyle="success-outline"
+                )
             btn.grid(row=row, column=col, padx=1, pady=1, sticky="nsew")
         
         # === 第 2-3 行：關閉按鈕（右邊，緊接著啟動按鈕）===
         offset_col = 1 + buttons_per_row  # 啟動按鈕右邊
         for idx, code in enumerate(current_group_codes):
+            color_name = group_colors[code].get()
+            color_hex = DRACULA_COLORS.get(color_name, "")
+            
             row = 1 + (idx // buttons_per_row)
             col = offset_col + (idx % buttons_per_row)
-            btn = tb.Button(
-                self.frm,
-                text=group_display_names[code].get(),
-                command=lambda c=code: close_group_windows(c),
-                bootstyle="danger-outline"
-            )
+            
+            if color_hex:
+                # 使用自定義樣式
+                danger_style = f"Group{code}.danger.TButton"
+                btn = tb.Button(
+                    self.frm,
+                    text=group_display_names[code].get(),
+                    command=lambda c=code: close_group_windows(c),
+                    style=danger_style
+                )
+            else:
+                btn = tb.Button(
+                    self.frm,
+                    text=group_display_names[code].get(),
+                    command=lambda c=code: close_group_windows(c),
+                    bootstyle="danger-outline"
+                )
             btn.grid(row=row, column=col, padx=1, pady=1, sticky="nsew")
     
     def _start_move(self, event):
@@ -2227,9 +2486,6 @@ schedule_btn.grid(row=0, column=12, padx=(2,2), sticky="e")
 
 mini_btn = tb.Button(top_row_frame, text=lang_map["mini"], command=toggle_mini_mode, bootstyle=INFO)
 mini_btn.grid(row=0, column=11, padx=(2,2), sticky="e")
-
-# 更新 mini_restore_label 的點擊事件為實際的還原函數
-mini_restore_label.bind("<Button-1>", lambda e: restore_from_mini())
 
 # --- 刷新按鈕 ---
 def refresh_lists():

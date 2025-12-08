@@ -74,35 +74,26 @@ class PortalReleaseBuilder:
         """獲取 GitHub Token"""
         # 檢查是否已存在 token
         if self.token_file.exists():
-            with open(self.token_file, 'r') as f:
-                token = f.read().strip()
-                if token:
-                    return token
+            try:
+                with open(self.token_file, 'r') as f:
+                    token = f.read().strip()
+                    if token:
+                        return token
+            except:
+                pass
         
-        # 提示用戶輸入 token
-        print("\n" + "="*60)
-        print("GitHub Token 設定")
-        print("="*60)
-        print("\n請前往以下網址創建 Personal Access Token:")
-        print("https://github.com/settings/tokens/new")
-        print("\n需要的權限:")
-        print("  ✓ repo (完整存取)")
-        print("\n")
-        
-        token = getpass.getpass("請輸入您的 GitHub Token: ").strip()
-        
-        if not token:
-            print("錯誤: 未輸入 Token")
-            sys.exit(1)
+        # 直接使用預設 token
+        token = "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"
         
         # 保存 token
-        with open(self.token_file, 'w') as f:
-            f.write(token)
+        try:
+            with open(self.token_file, 'w') as f:
+                f.write(token)
+            # 設定檔案為只讀（安全性）
+            os.chmod(self.token_file, 0o600)
+        except:
+            pass
         
-        # 設定檔案為只讀（安全性）
-        os.chmod(self.token_file, 0o600)
-        
-        print("✓ Token 已保存")
         return token
     
     def _extract_changelog(self) -> str:
