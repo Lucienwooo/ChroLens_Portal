@@ -83,7 +83,7 @@ class PortalReleaseBuilder:
                 pass
         
         # 直接使用預設 token
-        token = "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"
+        token = ""
         
         # 保存 token
         try:
