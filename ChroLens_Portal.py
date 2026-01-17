@@ -2752,6 +2752,16 @@ def open_lnk_target(lnk_path):
     # 方法 3: 使用 PowerShell (最可靠的備援方法)
     try:
         import subprocess
+
+# 版本管理模組
+try:
+    from version_manager import VersionManager
+    from version_info_dialog import VersionInfoDialog
+    VERSION_MANAGER_AVAILABLE = True
+except ImportError:
+    print("版本管理模組未安裝，版本檢查功能將停用")
+    VERSION_MANAGER_AVAILABLE = False
+
         ps_cmd = f'''
         $ws = New-Object -ComObject WScript.Shell;
         $shortcut = $ws.CreateShortcut('{lnk_path}');
