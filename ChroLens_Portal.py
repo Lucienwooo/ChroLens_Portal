@@ -99,6 +99,7 @@
 #
 
 CURRENT_VERSION = "2.5.3"
+GITHUB_REPO = "Lucienwooo/ChroLens_Portal"
 import os
 import time
 import win32gui
