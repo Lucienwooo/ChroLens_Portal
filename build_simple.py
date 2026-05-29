@@ -55,9 +55,9 @@ class PortalBuilder:
                 print(f"  - 嘗試刪除 {dir_path.name}/")
                 try:
                     shutil.rmtree(dir_path, ignore_errors=False)
-                    print(f"  ✓ 已刪除 {dir_path.name}/")
+                    print(f"  [OK] 已刪除 {dir_path.name}/")
                 except Exception as e:
-                    print(f"  ⚠ 無法完全刪除 {dir_path.name}/ - 將使用現有目錄")
+                    print(f"  [WARN] 無法完全刪除 {dir_path.name}/ - 將使用現有目錄")
                     print(f"    原因: 某些檔案可能正在使用中")
         
         print("  清理完成\n")
@@ -97,8 +97,9 @@ class PortalBuilder:
         
         # 添加數據文件
         data_files = [
-            ('update_manager.py', '.'),
-            ('update_dialog.py', '.'),
+            ('version_manager.py', '.'),
+            ('version_info_dialog.py', '.'),
+            ('lang.py', '.'),
         ]
         
         for src, dest in data_files:
@@ -123,7 +124,7 @@ class PortalBuilder:
             'ttkbootstrap', 'tkinter', 'tkinter.filedialog', 
             'tkinter.messagebox', 'tkinter.font',
             # 更新系統
-            'update_manager', 'update_dialog',
+            'version_manager', 'version_info_dialog',
             # 網路與系統
             'urllib', 'urllib.request', 'urllib.error',
             'json', 'zipfile', 'tempfile', 'shutil',
@@ -162,6 +163,15 @@ class PortalBuilder:
         backup_dir = self.output_dir / "backup"
         backup_dir.mkdir(exist_ok=True)
         
+        # 複製整個 images 資料夾到打包目錄，確保 qr_code.png 等圖片能被正確顯示
+        images_src = self.project_dir / "images"
+        images_dest = self.output_dir / "images"
+        if images_src.exists():
+            if images_dest.exists():
+                shutil.rmtree(images_dest)
+            shutil.copytree(images_src, images_dest)
+            print("  - 複製整個 images/ 資料夾")
+
         # 創建空的配置文件
         config_file = self.output_dir / "chrolens_portal.json"
         if not config_file.exists():
@@ -236,7 +246,7 @@ class PortalBuilder:
             zip_path = self.create_zip()
             
             print("\n" + "="*50)
-            print("✓ 打包完成！")
+            print("[OK] 打包完成！")
             print("="*50)
             print(f"\n輸出目錄: {self.output_dir}")
             print(f"ZIP 檔案: {zip_path}")
@@ -244,11 +254,11 @@ class PortalBuilder:
             print("\n")
             
         except Exception as e:
-            print(f"\n✗ 打包失敗: {e}")
+            print(f"\n[FAIL] 打包失敗: {e}")
             sys.exit(1)
 
 if __name__ == "__main__":
     builder = PortalBuilder()
     builder.build()
     
-    input("\n按 Enter 鍵退出...")
+    # input("\n按 Enter 鍵退出...")
