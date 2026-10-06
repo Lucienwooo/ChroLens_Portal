@@ -98,7 +98,7 @@
 # 詳見 CHANGELOG.md 檔案
 #
 
-CURRENT_VERSION = "2.5.4"
+CURRENT_VERSION = "2.5.6"
 GITHUB_REPO = "Lucienwooo/ChroLens_Portal"
 import os
 import time
@@ -129,6 +129,7 @@ import ctypes
 from lang import LANG_MAP, get_text
 
 SETTINGS_FILE = "chrolens_portal.json"
+settings_loading = False
 
 class ToolTip:
     """為 Tkinter 元件提供懸浮提示功能"""
@@ -136,20 +137,40 @@ class ToolTip:
         self.widget = widget
         self.text = text
         self.tip_window = None
-        self.widget.bind("<Enter>", self.show_tip)
-        self.widget.bind("<Leave>", self.hide_tip)
+        self._show_after_id = None
+        self._hide_after_id = None
+        self.widget.bind("<Enter>", self._schedule_show, add="+")
+        self.widget.bind("<Leave>", self._schedule_hide, add="+")
 
-    def show_tip(self, event=None):
+    def _cancel_job(self, attribute):
+        job_id = getattr(self, attribute)
+        if job_id:
+            try:
+                self.widget.after_cancel(job_id)
+            except tk.TclError:
+                pass
+            setattr(self, attribute, None)
+
+    def _schedule_show(self, event=None):
+        self._cancel_job("_hide_after_id")
+        if not self.tip_window and not self._show_after_id:
+            self._show_after_id = self.widget.after(450, self.show_tip)
+
+    def _schedule_hide(self, event=None):
+        self._cancel_job("_show_after_id")
+        if self.tip_window and not self._hide_after_id:
+            self._hide_after_id = self.widget.after(180, self.hide_tip)
+
+    def show_tip(self):
+        self._show_after_id = None
         if self.tip_window or not self.text:
             return
-        x, y, cx, cy = self.widget.bbox("insert")
-        x = x + self.widget.winfo_rootx() + 25
-        y = y + self.widget.winfo_rooty() + 25
-        
+
         self.tip_window = tw = tk.Toplevel(self.widget)
+        apply_app_icon(tw)
         tw.wm_overrideredirect(1)  # 無邊框
-        tw.wm_geometry(f"+{x}+{y}")
-        
+        tw.attributes("-topmost", True)
+
         # 現代化的簡約提示外觀（深色系，搭配主色調）
         label = tk.Label(
             tw,
@@ -164,17 +185,44 @@ class ToolTip:
             pady=4
         )
         label.pack(ipadx=1)
+        tw.update_idletasks()
+
+        x = self.widget.winfo_rootx() + self.widget.winfo_width() + 8
+        y = self.widget.winfo_rooty()
+        if x + tw.winfo_reqwidth() > tw.winfo_screenwidth():
+            x = self.widget.winfo_rootx() - tw.winfo_reqwidth() - 8
+        y = min(y, tw.winfo_screenheight() - tw.winfo_reqheight())
+        tw.wm_geometry(f"+{max(0, x)}+{max(0, y)}")
+        for target in (tw, label):
+            target.bind("<Enter>", self._cancel_hide, add="+")
+            target.bind("<Leave>", self._schedule_hide, add="+")
+
+    def _cancel_hide(self, event=None):
+        self._cancel_job("_hide_after_id")
 
     def hide_tip(self, event=None):
+        self._hide_after_id = None
         tw = self.tip_window
         self.tip_window = None
-        if tw:
+        if tw and tw.winfo_exists():
             tw.destroy()
 
 # === 自定義分組 Icon 處理與右鍵選單 ===
+def normalize_group_icon_path(value):
+    if isinstance(value, dict):
+        for key in ("path", "file_path", "icon_path", "file", "icon"):
+            candidate = value.get(key)
+            if isinstance(candidate, (str, os.PathLike)) and str(candidate).strip():
+                return os.fspath(candidate)
+        return ""
+    if isinstance(value, (str, os.PathLike)):
+        return os.fspath(value)
+    return ""
+
+
 def get_button_icon(button_type, code, size):
     """取得並載入分組自訂圖示，縮小並置中"""
-    icon_path = group_icons.get(f"{button_type}_{code}", "")
+    icon_path = normalize_group_icon_path(group_icons.get(f"{button_type}_{code}", ""))
     if icon_path and os.path.exists(icon_path):
         try:
             from PIL import Image as PILImage, ImageTk
@@ -315,45 +363,59 @@ def resource_path(relative_path):
     base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
 
-# === 檢查並要求管理者權限 ===
+
+APP_ICON_PATH = resource_path("冥想貓貓.ico")
+
+
+def apply_app_icon(window):
+    try:
+        if not os.path.exists(APP_ICON_PATH):
+            return False
+        window.iconbitmap(APP_ICON_PATH)
+        return True
+    except Exception as error:
+        print(f"設定視窗 icon 失敗: {error}")
+        return False
+
+# === 檢查與提權 ===
 def is_admin():
     """檢查是否以管理者身份運行"""
     try:
         import ctypes
         return ctypes.windll.shell32.IsUserAnAdmin()
-    except:
+    except Exception:
         return False
 
+
 def run_as_admin():
-    """以管理者身份重新啟動程式"""
+    """以管理者身份重新啟動程式；僅在使用者明確要求時使用。"""
     try:
-        if sys.argv[0].endswith('.py'):
-            # 如果是 .py 檔案
+        if getattr(sys, 'frozen', False):
+            target = os.path.abspath(sys.executable)
+            params = ' '.join(sys.argv[1:])
+        elif sys.argv and sys.argv[0].lower().endswith('.py'):
+            target = sys.executable
             script = os.path.abspath(sys.argv[0])
-            params = ' '.join([script] + sys.argv[1:])
-            shell.ShellExecuteEx(
-                lpVerb='runas',
-                lpFile=sys.executable,
-                lpParameters=params,
-                nShow=1
-            )
+            params = f'"{script}" ' + ' '.join(sys.argv[1:])
         else:
-            # 如果是 .exe 檔案
-            shell.ShellExecuteEx(
-                lpVerb='runas',
-                lpFile=sys.executable,
-                lpParameters=' '.join(sys.argv[1:]),
-                nShow=1
-            )
-        sys.exit(0)
+            target = sys.executable
+            params = ' '.join(sys.argv[1:])
+
+        shell.ShellExecuteEx(
+            lpVerb='runas',
+            lpFile=target,
+            lpParameters=params,
+            nShow=1
+        )
+        return True
     except Exception as e:
         print(f"無法以管理者身份啟動: {e}")
-        sys.exit(1)
+        return False
 
-# 檢查管理者權限，如果沒有則要求提升
+
+# 允許標準使用者啟動；僅提示受限功能，不再強制重啟造成卡死
 if not is_admin():
-    print("需要管理者權限，正在重新啟動...")
-    run_as_admin()
+    print("以標準使用者權限啟動，部分視窗管理功能可能受限。")
 
 # === 啟動時清理測試檔案和多餘文檔 ===
 def cleanup_test_files():
@@ -416,11 +478,14 @@ except Exception as e:
 # === 介面區塊 ===
 app = tb.Window(themename="darkly")
 app.title(f"ChroLens_Portal {CURRENT_VERSION}")
-try:
-    ico_path = resource_path("冥想貓貓.ico")
-    app.iconbitmap(ico_path)
-except Exception as e:
-    print(f"無法設定 icon: {e}")
+ico_path = APP_ICON_PATH
+apply_app_icon(app)
+
+if not is_admin():
+    app.after(500, lambda: messagebox.showwarning(
+        "權限提醒",
+        "目前以標準使用者權限啟動，部分視窗管理與快捷鍵功能可能受限。\n若需要完整功能，請以管理員身份重新啟動。"
+    ))
 
 # 取得 DPI 縮放比例並計算自適應尺寸
 dpi_scale = get_dpi_scale()
@@ -452,26 +517,14 @@ else:  # 100% 或更低
     scaled_width = base_width
     scaled_height = base_height
 
-# 設定固定視窗大小（強制固定寬度）
-fixed_width = 1400  # 固定寬度
+# 設定主視窗初始與最小尺寸；寬高皆可由使用者調整
+minimum_width = 1500
 min_height = 800  # 增加高度以容納分組欄位
-scaled_width = fixed_width
+scaled_width = minimum_width
 scaled_height = max(min_height, scaled_height)
 
 app.geometry(f"{scaled_width}x{scaled_height}")
-app.minsize(fixed_width, min_height)  # 設定最小視窗大小
-app.maxsize(fixed_width, 9999)  # 強制固定寬度，只允許調整高度
-
-# 監聽視窗大小變化，強制保持固定寬度
-def on_window_resize(event=None):
-    """視窗大小改變時的處理，強制保持固定寬度"""
-    if event and event.widget == app:
-        current_width = app.winfo_width()
-        if current_width != fixed_width:
-            app.geometry(f"{fixed_width}x{app.winfo_height()}")
-    app.update_idletasks()
-
-app.bind("<Configure>", on_window_resize)
+app.minsize(minimum_width, min_height)
 
 # 根據 DPI 調整 padding（高 DPI 時使用更合適的 padding）
 if dpi_scale >= 1.5:
@@ -546,6 +599,7 @@ close_buttons = {}
 # --- Mini 模式狀態追踪（用於資源優化）---
 mini_mode_active = False
 mini_window = None  # Mini 模式視窗實例
+mini_window_size = None
 
 # --- 語言設定（多語言功能）---
 current_language = "繁體中文"  # 預設語言
@@ -553,6 +607,7 @@ lang_map = LANG_MAP["繁體中文"]  # 當前語言的翻譯字典
 
 # --- 排程任務（需要在程式開頭定義以避免 save_settings 錯誤）---
 schedule_tasks = []
+schedule_list_refreshers = []
 
 # --- 視窗位置和大小記憶 (FancyZones 功能) ---
 # 儲存格式: { "group_code": { "file_name": {"x": int, "y": int, "width": int, "height": int, "state": str} } }
@@ -739,6 +794,7 @@ def manual_save():
     
     # 建立選擇對話框
     save_dialog = tk.Toplevel(app)
+    apply_app_icon(save_dialog)
     save_dialog.title("選擇儲存目標分組")
     save_dialog.transient(app)
     save_dialog.grab_set()
@@ -750,6 +806,8 @@ def manual_save():
     x = (screen_width // 2) - 200
     y = (screen_height // 2) - (dialog_height // 2)
     save_dialog.geometry(f"400x{dialog_height}+{x}+{y}")
+    save_dialog.minsize(400, dialog_height)
+    save_dialog.resizable(True, True)
     
     # 標題
     title_label = tb.Label(
@@ -1012,58 +1070,71 @@ def open_color_chooser():
         update_button_colors()
         save_settings()
 
+_submitting_name = False
+
 def on_group_name_edit_submit(event=None):
-    name_to_code = {group_display_names[c].get(): c for c in group_codes}
-    selected_val = group_name_edit_combo_var.get()
-    code = name_to_code.get(selected_val, selected_val)
-    if code not in group_codes:
-        code = "A"
+    global _submitting_name
+    if _submitting_name:
+        return
+    _submitting_name = True
+    try:
+        name_to_code = {group_display_names[c].get(): c for c in group_codes}
+        selected_val = group_name_edit_combo_var.get()
+        code = name_to_code.get(selected_val, selected_val)
+        if code not in group_codes:
+            code = "A"
+            
+        entry_val = group_name_edit_entry.get().strip()
+        old_name = group_display_names[code].get()
         
-    entry_val = group_name_edit_entry.get().strip()
-    old_name = group_display_names[code].get()
-    
-    # 若是 placeholder 或空白，恢復預設
-    if not entry_val or entry_val == group_name_placeholder:
-        new_name = get_default_group_name(code)
-        group_display_names[code].set(new_name)
-        group_name_edit_entry.delete(0, tk.END)
-        show_placeholder()
-        log(f"分組 {old_name} 名稱已還原為 {new_name}")
-    else:
-        new_name = entry_val
-        group_display_names[code].set(new_name)
-        hide_placeholder()
-        log(f"分組 {code} 名稱已修改為 {new_name}")
+        # 若是 placeholder 或空白，恢復預設
+        if not entry_val or entry_val == group_name_placeholder:
+            new_name = get_default_group_name(code)
+            group_display_names[code].set(new_name)
+            group_name_edit_entry.delete(0, tk.END)
+            show_placeholder()
+            log(f"分組 {old_name} 名稱已還原為 {new_name}")
+        else:
+            new_name = entry_val
+            group_display_names[code].set(new_name)
+            hide_placeholder()
+            log(f"分組 {code} 名稱已修改為 {new_name}")
+            
+        # 同步更新檔案清單中已選擇該分組的舊有名稱
+        for _, var1, var2, var3, var4, *_ in checkbox_vars_entries:
+            if var1.get() == old_name:
+                var1.set(new_name)
+            if var2.get() == old_name:
+                var2.set(new_name)
+            if var3.get() == old_name:
+                var3.set(new_name)
+            if var4.get() == old_name:
+                var4.set(new_name)
         
-    # 同步更新檔案清單中已選擇該分組的舊有名稱
-    for _, var1, var2, var3, var4, *_ in checkbox_vars_entries:
-        if var1.get() == old_name:
-            var1.set(new_name)
-        if var2.get() == old_name:
-            var2.set(new_name)
-        if var3.get() == old_name:
-            var3.set(new_name)
-        if var4.get() == old_name:
-            var4.set(new_name)
-    
-    # 保存顏色設定
-    new_color = group_color_combo.get()
-    if new_color == "自訂":
-        # 如果選擇自訂，開啟顏色選擇器
-        open_color_chooser()
-    elif new_color in DRACULA_COLORS:
-        group_colors[code].set(new_color)
-        # 清除自訂顏色（如果有）
-        if code in group_custom_colors:
-            group_custom_colors[code] = ""
-        update_color_preview(code)
-        log(f"分組 {group_display_names[code].get()} 顏色已設為：{new_color}")
-        # 立即更新按鈕顏色
-        update_button_colors()
-    
-    # 立即重新整理名稱修改 Combobox 選項並更新選取值為最新的名稱！
-    update_group_name_combo()
-    save_settings()
+        # 保存顏色設定
+        new_color = group_color_combo.get()
+        if new_color == "自訂":
+            # 如果選擇自訂，開啟顏色選擇器
+            # 僅當原本不是自訂、或自訂顏色為空、或使用者明確在下拉選單選擇時，才開啟選擇器
+            if (group_colors[code].get() != "自訂" or 
+                not group_custom_colors.get(code) or 
+                (event is not None and getattr(event, "widget", None) == group_color_combo)):
+                open_color_chooser()
+        elif new_color in DRACULA_COLORS:
+            group_colors[code].set(new_color)
+            # 清除自訂顏色（如果有）
+            if code in group_custom_colors:
+                group_custom_colors[code] = ""
+            update_color_preview(code)
+            log(f"分組 {group_display_names[code].get()} 顏色已設為：{new_color}")
+            # 立即更新按鈕顏色
+            update_button_colors()
+        
+        # 立即重新整理名稱修改 Combobox 選項並更新選取值為最新的名稱！
+        update_group_name_combo(code)
+        save_settings()
+    finally:
+        _submitting_name = False
 
 group_name_edit_combo = tb.Combobox(
     top_row_frame, values=[], textvariable=group_name_edit_combo_var, width=6, state="readonly"
@@ -1105,16 +1176,19 @@ save_btn.grid(row=0, column=8, padx=(8,2), sticky="e")
 group_color_combo.bind("<<ComboboxSelected>>", lambda e: update_color_preview())
 
 # 定義更新 group_name_edit_combo 的函數（將在 rebuild_group_buttons 時調用）
-def update_group_name_combo():
+def update_group_name_combo(selected_code=None):
     """更新分組命名下拉選單的選項"""
     names = [group_display_names[c].get() for c in group_codes]
     group_name_edit_combo.config(values=names)
     
-    name_to_code = {group_display_names[c].get(): c for c in group_codes}
-    current = group_name_edit_combo_var.get()
-    code = name_to_code.get(current, current)
-    if code not in group_codes:
-        code = group_codes[0] if group_codes else "A"
+    if selected_code in group_codes:
+        code = selected_code
+    else:
+        name_to_code = {group_display_names[c].get(): c for c in group_codes}
+        current = group_name_edit_combo_var.get()
+        code = name_to_code.get(current, current)
+        if code not in group_codes:
+            code = group_codes[0] if group_codes else "A"
         
     group_name_edit_combo_var.set(group_display_names[code].get())
 
@@ -1686,11 +1760,6 @@ def update_window_list():
     window_list_inner_frame.update_idletasks()
     window_list_canvas.config(scrollregion=window_list_canvas.bbox("all"))
 
-# 啟動時呼叫
-update_file_list()
-update_window_list()
-
-
 window_list_canvas.bind("<Enter>", lambda e: window_list_canvas.bind_all("<MouseWheel>", _on_window_mousewheel))
 window_list_canvas.bind("<Leave>", lambda e: window_list_canvas.unbind_all("<MouseWheel>"))
 
@@ -1704,6 +1773,7 @@ def on_label_drag_start(event, title):
     if drag_label_popup["win"]:
         drag_label_popup["win"].destroy()
     drag_label_popup["win"] = tk.Toplevel(app)
+    apply_app_icon(drag_label_popup["win"])
     drag_label_popup["win"].overrideredirect(True)
     drag_label_popup["win"].attributes("-topmost", True)
     label = tb.Label(drag_label_popup["win"], text=title, background="#222", foreground="#fff", font=tkfont.Font(family="Microsoft JhengHei", size=10))
@@ -1927,16 +1997,23 @@ def close_group_windows(group_code):
         log(f"{lang_map['找不到分組']} {group_display_names[group_code].get()} {lang_map['的視窗可關閉']}")
 
 def save_settings():
+    if settings_loading:
+        return
     try:
+        saved_group_icons = {
+            key: normalize_group_icon_path(value)
+            for key, value in group_icons.items()
+        }
         data = {
             "folder": folder_var.get(),
             "interval": interval_var.get(),
             "active_group_count": active_group_count.get(),  # 儲存分組數量
             "group_display_names": {c: group_display_names[c].get() for c in all_group_codes},  # 修正：儲存所有分組（A-J）
             "group_colors": {c: group_colors[c].get() for c in all_group_codes},
-        "group_icons": group_icons,
+        "group_icons": saved_group_icons,
         "mini_visibility": mini_visibility,
         "mini_positions": {b_type: {c: list(pos) for c, pos in mini_positions[b_type].items()} for b_type in mini_positions},
+            "mini_window_size": list(mini_window_size) if mini_window_size else None,
             "group_custom_colors": {c: group_custom_colors.get(c, "") for c in all_group_codes},  # 儲存自訂顏色
             "group_hotkeys": [v.get() for v in group_hotkeys],
             "checkbox_entries": [entry.get() for entry, *_ in checkbox_vars_entries],
@@ -1962,6 +2039,13 @@ def save_settings():
 # 1. 先定義 log
 log_history = []
 def log(msg):
+    if threading.current_thread() is not threading.main_thread():
+        try:
+            app.after(0, lambda message=msg: log(message))
+        except Exception:
+            pass
+        return
+
     timestamp = time.strftime("%H:%M:%S")
     full_msg = f"[{timestamp}] {msg}"
     log_history.append(full_msg)
@@ -2045,6 +2129,7 @@ def apply_language(new_lang):
 
 def restore_factory_settings():
     """恢復所有設定為預設值，清理圖片快取，並同步刷新所有 UI"""
+    global mini_window_size
     if not messagebox.askyesno("恢復預設值", "您確定要恢復所有設定為預設值嗎？這將會清除所有自訂分組名稱、快捷鍵、顏色、30個自訂圖示、Mini 視窗位置與可見度！"):
         return
     
@@ -2060,6 +2145,7 @@ def restore_factory_settings():
         
         # 重設所有變數為預設值
         active_group_count.set(6)
+        mini_window_size = None
         for c in all_group_codes:
             group_display_names[c].set(c)
             group_colors[c].set("無色")
@@ -2114,7 +2200,11 @@ def restore_factory_settings():
         # 重新整理主視窗元件
         rebuild_topmost_buttons()
         rebuild_group_buttons()
-        update_schedule_list()
+        for refresh_schedule_list in tuple(schedule_list_refreshers):
+            try:
+                refresh_schedule_list()
+            except tk.TclError:
+                schedule_list_refreshers.remove(refresh_schedule_list)
         
         # 重新整理 Mini 視窗 (若開啟中)
         if mini_mode_active and mini_window:
@@ -2128,9 +2218,10 @@ def restore_factory_settings():
         messagebox.showerror("錯誤", f"恢復預設值失敗：{e}")
 
 def load_settings():
-    global schedule_tasks, window_layouts
+    global schedule_tasks, window_layouts, mini_window_size, settings_loading
     if not os.path.exists(SETTINGS_FILE):
         return
+    settings_loading = True
     try:
         with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -2150,16 +2241,18 @@ def load_settings():
             
         # 載入自訂圖示 (支援 30 個獨立按鈕與舊版相容)
         saved_icons = data.get("group_icons", {})
+        if not isinstance(saved_icons, dict):
+            saved_icons = {}
         for k in group_icons:
             if k in saved_icons:
-                group_icons[k] = saved_icons.get(k, "")
+                group_icons[k] = normalize_group_icon_path(saved_icons.get(k, ""))
             else:
                 # 舊版相容：若為 focus 按鈕，且舊版 key (c) 存在，則套用
                 parts = k.split("_", 1)
                 if len(parts) == 2:
                     b_type, c = parts
                     if b_type == "focus" and c in saved_icons:
-                        group_icons[k] = saved_icons.get(c, "")
+                        group_icons[k] = normalize_group_icon_path(saved_icons.get(c, ""))
                     else:
                         group_icons[k] = ""
                 else:
@@ -2187,6 +2280,17 @@ def load_settings():
                 pos = saved_positions["control"].get(k)
                 if pos:
                     mini_positions["control"][k] = tuple(pos)
+
+        saved_mini_size = data.get("mini_window_size")
+        if isinstance(saved_mini_size, (list, tuple)) and len(saved_mini_size) == 2:
+            try:
+                width, height = (int(value) for value in saved_mini_size)
+                mini_window_size = (width, height) if 80 <= width <= 10000 and 60 <= height <= 10000 else None
+            except (TypeError, ValueError):
+                mini_window_size = None
+        else:
+            mini_window_size = None
+
         # 載入自訂顏色
         for c in all_group_codes:
             group_custom_colors[c] = data.get("group_custom_colors", {}).get(c, "")
@@ -2238,6 +2342,8 @@ def load_settings():
             log(f"{lang_map['設定檔讀取失敗: ']}{e}")
         except:
             print(f"設定檔讀取失敗: {e}")
+    finally:
+        settings_loading = False
 # 在所有重要變動時呼叫 save_settings
 def on_any_change(*args):
     save_settings()
@@ -2272,11 +2378,40 @@ atexit.register(save_settings)
 # 啟動時自動載入
 load_settings()
 
-# --- 啟動時延遲0.5秒再讀取設定檔 ---
-def delayed_load_settings():
-    time.sleep(0.5)
-    app.after(0, lambda: [load_settings(), apply_language(current_language), update_file_list(), update_window_list()])
-threading.Thread(target=delayed_load_settings, daemon=True).start()
+# --- Mimic 風格：啟動後自動檢查更新 ---
+def check_for_updates_on_startup():
+    """在背景檢查更新，僅於有新版本時開啟整合資訊視窗。"""
+    def check_updates():
+        try:
+            from version_manager import VersionManager
+
+            vm = VersionManager(
+                CURRENT_VERSION,
+                logger=lambda message: app.after(0, lambda text=message: log(text)),
+            )
+            update_info = vm.check_for_updates()
+            if update_info:
+                app.after(
+                    0,
+                    lambda result=update_info, manager=vm: open_portal_info_dialog(
+                        "version", manager, result
+                    ),
+                )
+        except Exception as error:
+            app.after(0, lambda message=str(error): log(f"啟動檢查更新失敗: {message}"))
+
+    threading.Thread(target=check_updates, daemon=True).start()
+
+app.after(2000, check_for_updates_on_startup)
+
+# --- 啟動後建立檔案與視窗清單 ---
+def initialize_ui_lists():
+    apply_language(current_language)
+    update_file_list()
+    update_window_list()
+
+
+app.after(100, initialize_ui_lists)
 
 # 綺定分組名稱變動時自動更新（修正：追蹤所有分組 A-J）
 for c in all_group_codes:
@@ -2285,131 +2420,71 @@ for c in all_group_codes:
 # 新增：視窗滾動條隱藏與顯示
 def _on_window_vsb(*args):
     window_list_vsb.set(*args)
-    # 自動隱藏/顯示
     if float(args[0]) <= 0.0 and float(args[1]) >= 1.0:
         window_list_vsb.grid_remove()
     else:
         window_list_vsb.grid(row=0, column=1, sticky="ns")
+
+
 window_list_canvas.configure(yscrollcommand=_on_window_vsb)
 
 
-def show_about_dialog():
-    about_win = tb.Toplevel(app)
-    about_win.title(lang_map.get("關於 ChroLens_Portal", "關於 ChroLens_Portal"))
-    
-    # 根據 DPI 調整對話框大小
-    dialog_width = int(450 / dpi_scale)
-    dialog_height = int(600 / dpi_scale)
-    dialog_width = max(450, dialog_width)
-    dialog_height = max(600, dialog_height)
-    
-    about_win.geometry(f"{dialog_width}x{dialog_height}")
-    about_win.resizable(False, False)
-    about_win.grab_set()
-    
-    # 置中顯示
-    app.update_idletasks()
-    x = app.winfo_x() + (app.winfo_width() // 2) - (dialog_width // 2)
-    y = app.winfo_y() + 80
-    about_win.geometry(f"{dialog_width}x{dialog_height}+{x}+{y}")
+def on_about_language_change(new_language):
+    if new_language != current_language:
+        apply_language(new_language)
+        save_settings()
 
-    # 設定icon與主程式相同
+
+def open_portal_info_dialog(initial_tab="about", version_manager=None, initial_update_info=None):
+    """以單一視窗提供 About 資訊與版本更新功能。"""
     try:
-        import sys, os
-        if getattr(sys, 'frozen', False):
-            icon_path = os.path.join(sys._MEIPASS, "冥想貓貓.ico")
-        else:
-            icon_path = "冥想貓貓.ico"
-        if os.path.exists(icon_path):
-            about_win.iconbitmap(icon_path)
-    except Exception as e:
-        print(f"無法設定 about 視窗 icon: {e}")
+        from version_manager import VersionManager
+        from version_info_dialog import VersionInfoDialog
 
-    # 內邊距設定
-    frm = tb.Frame(about_win, padding=20)
-    frm.pack(fill="both", expand=True)
+        existing_dialog = getattr(app, "_portal_info_dialog", None)
+        if existing_dialog is not None and existing_dialog.winfo_exists():
+            existing_dialog.lift()
+            if initial_tab == "version":
+                existing_dialog.show_version_tab()
+            else:
+                existing_dialog.show_about_tab()
+            return existing_dialog
 
-    # 1. 軟體標題與功能說明 (維持我們的功能說明)
-    desc_text = f"ChroLens_Portal\n{lang_map.get('視窗管理工具', '視窗管理工具')}\n{lang_map.get('分組啟動、快捷切換、智能布局記憶', '分組啟動、快捷切換、智能布局記憶')}"
-    tb.Label(frm, text=desc_text, font=("Microsoft JhengHei", 11)).pack(anchor="w", pady=(0, 6))
-    
-    # 2. Discord 交流群連結 (整個照抄)
-    link = tk.Label(frm, text="任何問題歡迎加入DC伺服器詢問(點我)", font=("Microsoft JhengHei", 10, "underline"), fg="#5865F2", cursor="hand2")
-    link.pack(anchor="w")
-    link.bind("<Button-1>", lambda e: os.startfile("https://discord.gg/72Kbs4WPPn"))
-    
-    # 3. 巴哈連結
-    baha_link = tk.Label(frm, text="查看更多工具(巴哈)", font=("Microsoft JhengHei", 10, "underline"), fg="#24292f", cursor="hand2")
-    baha_link.pack(anchor="w", pady=(6, 0))
-    baha_link.bind("<Button-1>", lambda e: os.startfile("https://home.gamer.com.tw/profile/index_creation.php?owner=umiwued&folder=524003"))
+        vm = version_manager or VersionManager(
+            CURRENT_VERSION,
+            logger=lambda message: app.after(0, lambda text=message: log(text)),
+        )
 
-    # 4. 作者資訊 (整個照抄)
-    tb.Label(frm, text="By Lucienwooo", font=("Microsoft JhengHei", 11)).pack(anchor="w", pady=(8, 0))
-    
-    # 5. 贊助說明 (整個照抄)
-    tb.Label(frm, text="若不嫌棄請我喝飲料\n贊助QRcode(可使用line pay)", font=("Microsoft JhengHei", 11)).pack(anchor="w", pady=(8, 0))
+        def on_update_complete():
+            log("準備關閉程式以進行更新...")
+            app.after(1000, app.destroy)
 
-    # 6. 贊助 QR Code 載入與置中 (整個照抄)
-    qr_frame = tb.Frame(frm)
-    qr_frame.pack(fill="x", pady=(10, 0))
-    
-    qr_path = resource_path("images/qr_code.png")
-    if os.path.exists(qr_path):
-        try:
-            # 儲存參考避免被 GC
-            about_win.qr_img = tk.PhotoImage(file=qr_path)
-            # 調整圖片大小（512x512 縮小為 256x256）
-            about_win.qr_img = about_win.qr_img.subsample(2, 2) 
-            
-            qr_label = tk.Label(qr_frame, image=about_win.qr_img, bg="#ffffff")
-            qr_label.pack(pady=5)
-        except Exception as e:
-            tb.Label(qr_frame, text=f"(圖片載入失敗: {e})", font=("Microsoft JhengHei", 9)).pack()
-    else:
-        tb.Label(qr_frame, text="(尚未放置贊助圖片 images/qr_code.png)", font=("Microsoft JhengHei", 9)).pack()
+        dialog = VersionInfoDialog(
+            app,
+            vm,
+            CURRENT_VERSION,
+            on_update_callback=on_update_complete,
+            on_restore_defaults=restore_factory_settings,
+            on_language_change=on_about_language_change,
+            current_language=current_language,
+            initial_update_info=initial_update_info,
+            initial_tab=initial_tab,
+        )
+        app._portal_info_dialog = dialog
+        return dialog
+    except Exception as error:
+        log(f"顯示關於/版本資訊失敗: {error}")
+        messagebox.showerror("錯誤", f"無法顯示關於/版本資訊：\n{error}")
 
-    # 7. 底部控制按鈕區 (包含語言、檢查更新、關閉)
-    button_frame = tb.Frame(frm)
-    button_frame.pack(side="bottom", fill="x", pady=(10, 0))
-    
-    # 語言選擇器
-    lang_var = tk.StringVar(value=current_language)
-    lang_combo = tb.Combobox(button_frame, textvariable=lang_var, values=["繁體中文", "日本語", "English"], 
-                              state="readonly", width=8)
-    lang_combo.pack(side="left", padx=(0, 5))
-    
-    def on_language_change(event):
-        new_lang = lang_var.get()
-        if new_lang != current_language:
-            apply_language(new_lang)
-            save_settings()  # 儲存新語言設定
-            about_win.destroy()
-            show_about_dialog()
-    
-    lang_combo.bind("<<ComboboxSelected>>", on_language_change)
-    
-    # 檢查更新
-    def check_for_updates():
-        try:
-            from version_manager import VersionManager
-            from version_info_dialog import VersionInfoDialog
-            
-            # 創建版本管理器
-            vm = VersionManager(CURRENT_VERSION, logger=log)
-            
-            # 顯示版本資訊與更新對話視窗
-            def on_update_complete():
-                log("準備關閉程式以進行更新...")
-                app.after(1000, app.destroy)
-            
-            VersionInfoDialog(about_win, vm, CURRENT_VERSION, on_update_complete)
-        except Exception as e:
-            log(f"顯示版本資訊失敗: {e}")
-            messagebox.showerror("錯誤", f"無法顯示版本資訊：\n{e}", parent=about_win)
-            
-    tb.Button(button_frame, text="恢復預設", command=restore_factory_settings, width=10, bootstyle="danger", font=("Microsoft JhengHei", 9, "bold")).pack(side="left", padx=(0, 5))
-    tb.Button(button_frame, text=lang_map.get("檢查更新", "檢查更新"), command=check_for_updates, width=10, bootstyle=INFO).pack(side="left", padx=(0, 5))
-    tb.Button(button_frame, text=lang_map.get("關閉", "關閉"), command=about_win.destroy, width=8, bootstyle=SECONDARY).pack(side="right")
+
+def show_version_info():
+    """開啟整合視窗並切換至版本資訊分頁。"""
+    return open_portal_info_dialog("version")
+
+
+def show_about_dialog():
+    """開啟整合視窗的 About 分頁。"""
+    return open_portal_info_dialog("about")
 
 # --- row 0 新增「刷新視窗」按鈕（SVG 圖示版）---
 def manual_refresh_window_list():
@@ -2437,10 +2512,84 @@ refresh_label = tb.Label(refresh_frame, text="🔄", font=refresh_font, cursor="
 refresh_label.pack()
 refresh_label.bind("<Button-1>", lambda e: manual_refresh_window_list())
 
+# --- Windows 工作排程器整合 ---
+def build_schedule_task_name(task):
+    """依排程資訊產生唯一的 Windows 工作排程名稱。"""
+    group_code = str(task.get("group", "A")).upper()
+    time_value = str(task.get("time", "00:00")).replace(":", "_")
+    return f"ChroLens_Portal_{group_code}_{time_value}"
+
+
+def build_schedule_task_command(task):
+    """建立排程觸發時執行的命令列。"""
+    if getattr(sys, 'frozen', False):
+        script_path = os.path.abspath(sys.executable)
+    else:
+        script_path = os.path.abspath(sys.argv[0]) if sys.argv and sys.argv[0] else os.path.abspath(__file__)
+    group_code = str(task.get("group", "A")).upper()
+    return f'"{sys.executable}" "{script_path}" --schedule-group={group_code}'
+
+
+def sync_windows_schedule(task):
+    """同步單一排程到 Windows 工作排程器。"""
+    try:
+        task_name = build_schedule_task_name(task)
+        command = build_schedule_task_command(task)
+        if not task.get("enabled", True):
+            subprocess.run(
+                ["schtasks.exe", "/Delete", "/TN", task_name, "/F"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=10,
+            )
+            log(f"已移除 Windows 排程：{task_name}")
+            return True
+
+        subprocess.run(
+            [
+                "schtasks.exe",
+                "/Create",
+                "/TN", task_name,
+                "/TR", command,
+                "/SC", "DAILY",
+                "/ST", str(task.get("time", "00:00")),
+                "/F"
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+        log(f"已同步到 Windows 排程：{task_name} @ {task.get('time', '00:00')}")
+        return True
+    except Exception as e:
+        log(f"同步 Windows 排程失敗：{e}")
+        return False
+
+
+def sync_all_windows_schedules():
+    """將所有排程同步到 Windows 工作排程器。"""
+    for task in schedule_tasks:
+        sync_windows_schedule(task)
+
+
+def apply_scheduled_group_from_args():
+    """處理由 Windows 排程觸發的 group 啟動。"""
+    for arg in sys.argv[1:]:
+        if arg.startswith("--schedule-group="):
+            group_code = arg.split("=", 1)[1].upper()
+            if group_code in group_codes:
+                app.after(1500, lambda gc=group_code: start_group_opening(gc))
+                log(f"Windows 排程已觸發分組：{group_display_names[group_code].get()}")
+                return True
+    return False
+
 # --- 排程功能 ---
 def show_schedule_dialog():
     """顯示排程設定視窗"""
     schedule_win = tb.Toplevel(app)
+    apply_app_icon(schedule_win)
     schedule_win.title(lang_map["ChroLens_Portal 排程設定"])
     
     # 根據 DPI 調整對話框大小
@@ -2508,6 +2657,10 @@ def show_schedule_dialog():
                 group_display_names[c].trace_remove("write", t_id)
             except Exception:
                 pass
+        try:
+            schedule_list_refreshers.remove(update_schedule_list)
+        except (NameError, ValueError):
+            pass
         schedule_win.destroy()
     schedule_win.protocol("WM_DELETE_WINDOW", on_close_dialog)
     
@@ -2551,6 +2704,7 @@ def show_schedule_dialog():
             "time": time_str,
             "enabled": True
         })
+        sync_windows_schedule(schedule_tasks[-1])
         update_schedule_list()
         save_settings()  # 儲存排程到設定檔
         log(f"{lang_map['已新增排程：']}{group_display_names[group_code].get()} {lang_map['於']} {time_str}")
@@ -2599,6 +2753,7 @@ def show_schedule_dialog():
             
             def toggle_task(index=idx, var=enabled_var):
                 schedule_tasks[index]["enabled"] = var.get()
+                sync_windows_schedule(schedule_tasks[index])
                 save_settings()
                 log(f"{lang_map['排程']} {schedule_tasks[index]['time']} {group_display_names[schedule_tasks[index]['group']].get()} {lang_map['已啟用'] if var.get() else lang_map['已停用']}")
             
@@ -2632,6 +2787,7 @@ def show_schedule_dialog():
             # 刪除按鈕
             def delete_task(index=idx):
                 removed = schedule_tasks.pop(index)
+                sync_windows_schedule({**removed, "enabled": False})
                 update_schedule_list()
                 save_settings()
                 log(f"{lang_map['已刪除排程：']}{group_display_names[removed['group']].get()} {lang_map['於']} {removed['time']}")
@@ -2647,6 +2803,8 @@ def show_schedule_dialog():
         
         inner_frame.update_idletasks()
         canvas.configure(scrollregion=canvas.bbox("all"))
+
+    schedule_list_refreshers.append(update_schedule_list)
     
     # 底部控制按鈕
     bottom_frame = tb.Frame(main_frame)
@@ -2673,7 +2831,7 @@ def show_schedule_dialog():
     close_btn = tb.Button(
         bottom_frame,
         text="關閉",
-        command=schedule_win.destroy,
+        command=on_close_dialog,
         bootstyle="secondary",
         width=8
     )
@@ -2697,13 +2855,24 @@ class MiniMode:
         self.parent = parent
         self.win = tb.Toplevel(parent)
         self.win.title("ChroLens Portal - Mini")
-        self.win.attributes("-alpha", 0.9)
+        self.win.attributes("-alpha", 1.0)
         self.win.wm_attributes("-topmost", True)
         self.win.protocol("WM_DELETE_WINDOW", self.close)
+        apply_app_icon(self.win)
         
         # 狀態變數用於點擊-交換/移動佈局編輯器
         self.in_edit_mode = False
         self.selected_button_key = None  # (b_type, code)
+        self._geometry_initialized = False
+        self._geometry_ready = False
+        self._size_save_job = None
+        self._region_update_job = None
+        self._grid_rows = 1
+        self._grid_columns = 1
+        self._action_buttons = []
+        self._placeholder_widgets = []
+        self._last_resize_bucket = None
+        self._default_cell_size = max(1, int(64 * dpi_scale))
         
         # 設定 icon 與主程式一致
         try:
@@ -2721,6 +2890,7 @@ class MiniMode:
         self.offset_y = 0
         self.win.bind("<Button-1>", self._start_move)
         self.win.bind("<B1-Motion>", self._do_move)
+        self.win.bind("<Configure>", self._on_window_configure, add="+")
         
         # 建立主框架，使用最小 padding
         self.frm = tb.Frame(self.win, padding=5)
@@ -2745,6 +2915,83 @@ class MiniMode:
         """獲取分組名稱"""
         s = name.strip()
         return s if s else "?"
+
+    def _on_window_configure(self, event):
+        if event.widget != self.win or not self._geometry_ready:
+            return
+
+        self._apply_resize_scaling()
+        self._schedule_window_region_update()
+
+        width = self.win.winfo_width()
+        height = self.win.winfo_height()
+        if width < 80 or height < 60:
+            return
+
+        global mini_window_size
+        mini_window_size = (width, height)
+        if self._size_save_job:
+            self.win.after_cancel(self._size_save_job)
+        self._size_save_job = self.win.after(400, self._persist_window_size)
+
+    def _persist_window_size(self):
+        self._size_save_job = None
+        if self.win.winfo_exists():
+            save_settings()
+
+    def _schedule_window_region_update(self):
+        if self._region_update_job:
+            try:
+                self.win.after_cancel(self._region_update_job)
+            except tk.TclError:
+                pass
+        self._region_update_job = self.win.after_idle(self._reset_window_region)
+
+    def _reset_window_region(self):
+        self._region_update_job = None
+        if not self.win.winfo_exists():
+            return
+        try:
+            set_window_region = ctypes.windll.user32.SetWindowRgn
+            set_window_region.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int]
+            set_window_region.restype = ctypes.c_int
+            set_window_region(ctypes.c_void_p(self.win.winfo_id()), None, True)
+        except Exception as error:
+            print(f"Mini 視窗區域重設失敗: {error}")
+
+    def _apply_resize_scaling(self):
+        available_width = max(1, self.frm.winfo_width() - 10)
+        available_height = max(1, self.frm.winfo_height() - 10)
+        cell_size = min(
+            available_width / max(1, self._grid_columns),
+            available_height / max(1, self._grid_rows)
+        )
+        bucket = max(8, int(cell_size // 4) * 4)
+        if bucket == self._last_resize_bucket:
+            return
+        self._last_resize_bucket = bucket
+
+        scale = min(1.0, bucket / self._default_cell_size)
+        icon_size = max(8, bucket)
+        for button, button_type, code, has_icon in self._action_buttons:
+            font_family = "Segoe UI Emoji" if button_type == "control" else "Microsoft JhengHei"
+            base_size = 14 if button_type == "control" else 12
+            button.configure(font=(font_family, max(8, int(base_size * scale)), "bold"))
+            if has_icon:
+                photo = get_button_icon(button_type, code, icon_size)
+                if photo:
+                    self.image_refs[f"{button_type}_{code}"] = photo
+                    button.configure(image=photo)
+                    button.image = photo
+
+        placeholder_font = max(8, int(12 * scale))
+        for placeholder in self._placeholder_widgets:
+            placeholder.itemconfigure("plus", font=("Segoe UI", placeholder_font, "bold"))
+
+    def _enable_window_tracking(self):
+        self._geometry_ready = True
+        self._apply_resize_scaling()
+        self._schedule_window_region_update()
         
     def handle_edit_click(self, button_type, code):
         """處理編輯模式下的按鈕點擊事件 (點擊-選取-交換/移動邏輯)"""
@@ -2812,16 +3059,24 @@ class MiniMode:
 
     def rebuild_buttons(self):
         """根據當前分組數量與自訂位置/可見度動態重建 mini 模式按鈕，自動貼合 client 區域大小避免切掉邊界"""
+        previous_size = None
+        if self._geometry_initialized:
+            previous_size = (self.win.winfo_width(), self.win.winfo_height())
+
         # 清除所有舊按鈕
         for widget in self.frm.winfo_children():
             widget.destroy()
+
+        self._action_buttons = []
+        self._placeholder_widgets = []
+        self._last_resize_bucket = None
 
         count = active_group_count.get()
         current_group_codes = all_group_codes[:count]
 
         # 64x64 像素正方形 (DPI 感知)
-        btn_sz = int(64 * dpi_scale)
-        icon_sz = int(64 * dpi_scale)
+        btn_sz = self._default_cell_size
+        icon_sz = btn_sz
 
         # 定義大字型 (不需乘上 dpi_scale，因為 Windows 會自動進行 DPI 字型縮放，以避免字型二度放大撐大按鈕)
         emoji_font = ("Segoe UI Emoji", 14, "bold")
@@ -2870,32 +3125,87 @@ class MiniMode:
         max_col = max(c for b_type, code, r, c in active_buttons) if active_buttons else 0
 
         # 動態配置 grid 行與列 (使用 weight=1 與 uniform 強制所有按鈕呈現完美一致的正方形)
-        for r in range(max_row + 1):
-            self.frm.grid_rowconfigure(r, weight=1, minsize=btn_sz, uniform="row")
-        for c in range(max_col + 1):
-            self.frm.grid_columnconfigure(c, weight=1, minsize=btn_sz, uniform="col")
+        self._grid_rows = max_row + 1
+        self._grid_columns = max_col + 1
+        for r in range(self._grid_rows):
+            self.frm.grid_rowconfigure(r, weight=1, minsize=1, uniform="row")
+        for c in range(self._grid_columns):
+            self.frm.grid_columnconfigure(c, weight=1, minsize=1, uniform="col")
+
+        minimum_group_font = tkfont.Font(
+            self.win,
+            family="Microsoft JhengHei",
+            size=8,
+            weight="bold",
+        )
+        minimum_control_font = tkfont.Font(
+            self.win,
+            family="Segoe UI Emoji",
+            size=8,
+            weight="bold",
+        )
+        minimum_cell_width = 36
+        minimum_cell_height = 34
+        control_labels = {
+            "restore": "↩️",
+            "show_desktop": "🖥️",
+            "edit": "🛠️",
+        }
+        for button_type, code, row, column in active_buttons:
+            if button_type == "control":
+                label = control_labels[code]
+                button_font = minimum_control_font
+            else:
+                label = self.get_short_name(group_display_names[code].get())
+                button_font = minimum_group_font
+            minimum_cell_width = max(
+                minimum_cell_width,
+                button_font.measure(label) + 18,
+            )
+            minimum_cell_height = max(
+                minimum_cell_height,
+                button_font.metrics("linespace") + 14,
+            )
 
         # 3. 渲染占位符 (僅在編輯模式下)
         if self.in_edit_mode:
             for r in range(max_row + 1):
                 for c in range(max_col + 1):
                     if (r, c) not in occupied_positions:
-                        placeholder_btn = tk.Button(
+                        placeholder_btn = tk.Canvas(
                             self.frm,
-                            text="+",
-                            command=lambda r=r, c=c: self.handle_edit_click("placeholder", (r, c)),
-                            relief="sunken",
-                            bd=1,
+                            background="#282a36",
+                            borderwidth=0,
                             highlightthickness=0,
-                            font=("Segoe UI", 12, "bold")
+                            cursor="hand2"
                         )
-                        placeholder_btn.config(
-                            bg="#282a36",
-                            fg="#6272a4",
-                            activebackground="#44475a",
-                            activeforeground="#6272a4"
+                        placeholder_btn.create_rectangle(
+                            1, 1, 1, 1,
+                            outline="#6272a4",
+                            dash=(2, 3),
+                            tags="outline"
+                        )
+                        placeholder_btn.create_text(
+                            0, 0,
+                            text="+",
+                            fill="#8be9fd",
+                            stipple="gray50",
+                            font=("Segoe UI", 12, "bold"),
+                            tags="plus"
+                        )
+                        placeholder_btn.bind(
+                            "<Configure>",
+                            lambda event, canvas=placeholder_btn: (
+                                canvas.coords("plus", event.width / 2, event.height / 2),
+                                canvas.coords("outline", 1, 1, event.width - 1, event.height - 1)
+                            )
+                        )
+                        placeholder_btn.bind(
+                            "<Button-1>",
+                            lambda event, r=r, c=c: self.handle_edit_click("placeholder", (r, c))
                         )
                         placeholder_btn.grid(row=r, column=c, padx=1, pady=1, sticky="nsew")
+                        self._placeholder_widgets.append(placeholder_btn)
 
         # 4. 建立所有活躍按鈕
         for b_type, code, r, c in active_buttons:
@@ -2995,16 +3305,29 @@ class MiniMode:
 
             btn.config(bg=bg_color, fg=fg_color, activebackground=bg_color, activeforeground=fg_color)
             btn.grid(row=r, column=c, padx=1, pady=1, sticky="nsew")
+            self._action_buttons.append((btn, b_type, code, photo is not None))
 
-        # 讓 Tkinter 自動更新元件以獲取最真實的 Requested 容器尺寸
+        # 保留初始內容尺寸，後續重建則維持使用者目前的視窗大小。
         self.win.update_idletasks()
-        self.win.update()
-        mini_width = self.frm.winfo_reqwidth()
-        mini_height = self.frm.winfo_reqheight()
-
-        # 動態設定 geometry 到 client 區域並使其不可手動拉伸大小以防止 minsize 切邊 bug
-        self.win.geometry(f"{mini_width}x{mini_height}")
-        self.win.resizable(False, False)
+        self.win.minsize(
+            minimum_cell_width * self._grid_columns + 10,
+            minimum_cell_height * self._grid_rows + 35,
+        )
+        if previous_size and previous_size[0] > 1 and previous_size[1] > 1:
+            self.win.geometry(f"{previous_size[0]}x{previous_size[1]}")
+        elif not self._geometry_initialized:
+            if mini_window_size:
+                mini_width, mini_height = mini_window_size
+            else:
+                mini_width = self.frm.winfo_reqwidth()
+                mini_height = self.frm.winfo_reqheight()
+            self.win.geometry(f"{mini_width}x{mini_height}")
+            self.win.resizable(True, True)
+            self._geometry_initialized = True
+            self.win.after_idle(self._enable_window_tracking)
+        else:
+            self._schedule_window_region_update()
+        self._apply_resize_scaling()
             
     def _start_move(self, event):
         """開始拖曳"""
@@ -3019,6 +3342,17 @@ class MiniMode:
     
     def close(self):
         """關閉 mini 視窗並顯示主程式"""
+        global mini_window_size
+        width = self.win.winfo_width()
+        height = self.win.winfo_height()
+        if width >= 80 and height >= 60:
+            mini_window_size = (width, height)
+            save_settings()
+        if self._size_save_job:
+            try:
+                self.win.after_cancel(self._size_save_job)
+            except tk.TclError:
+                pass
         self.win.destroy()
         global mini_mode_active, mini_window
         mini_mode_active = False
@@ -3086,8 +3420,9 @@ def get_group_files(group_code):
 group_focus_indexes = {code: 0 for code in group_codes}
 group_hwnd_lists = {code: [] for code in group_codes}
 
-def update_group_hwnd_list(group_code):
-    files = get_group_files(group_code)
+def update_group_hwnd_list(group_code, files=None):
+    if files is None:
+        files = get_group_files(group_code)
     target_titles = [os.path.splitext(os.path.basename(f))[0].lower() for f in files if f]
     hwnds = []
     def enum_handler(hwnd, _):
@@ -3101,20 +3436,21 @@ def update_group_hwnd_list(group_code):
 
 def focus_next_in_group(group_code):
     """批次同時置頂分組中的所有視窗並恢復佈局（整合 FancyZones 功能）"""
-    log(f"{lang_map['[快捷鍵] 觸發分組']} {group_display_names[group_code].get()}")
-    
-    update_group_hwnd_list(group_code)
-    hwnds = group_hwnd_lists[group_code]
-    
-    if not hwnds:
-        log(f"{lang_map['[快捷鍵] 分組']} {group_display_names[group_code].get()} {lang_map['沒有視窗']}")
-        return
-    
-    log(f"{lang_map['[快捷鍵] 開始置頂並恢復分組']} {group_display_names[group_code].get()} {lang_map['的']} {len(hwnds)} {lang_map['個視窗佈局']}")
+    group_name = group_display_names[group_code].get()
+    group_files = get_group_files(group_code)
+    log(f"{lang_map['[快捷鍵] 觸發分組']} {group_name}")
     
     def topmost_and_restore_windows():
         """在背景執行緒中批次置頂視窗並恢復佈局"""
         try:
+            update_group_hwnd_list(group_code, group_files)
+            hwnds = group_hwnd_lists[group_code]
+            if not hwnds:
+                log(f"{lang_map['[快捷鍵] 分組']} {group_name} {lang_map['沒有視窗']}")
+                return
+
+            log(f"{lang_map['[快捷鍵] 開始置頂並恢復分組']} {group_name} {lang_map['的']} {len(hwnds)} {lang_map['個視窗佈局']}")
+
             # 獲取所有視窗的標題（用於匹配佈局）
             hwnd_titles = {}
             for hwnd in hwnds:
@@ -3154,9 +3490,6 @@ def focus_next_in_group(group_code):
             if restored_count > 0:
                 app.after(0, lambda rc=restored_count: log(f"{lang_map['已恢復']} {rc} {lang_map['個視窗的佈局']}"))
 
-            # 短暫延遲確保佈局恢復完成
-            time.sleep(0.15)
-
             # 第三步：將所有視窗置頂（批次處理，使用 HWND_TOPMOST）
             try:
                 hdwp = win32gui.BeginDeferWindowPos(len(hwnds))
@@ -3176,9 +3509,6 @@ def focus_next_in_group(group_code):
                         )
                     except:
                         pass
-
-            # 短暫延遲
-            time.sleep(0.05)
 
             # 第四步：取消永久置頂（批次處理，使用 HWND_NOTOPMOST）
             try:
@@ -3208,7 +3538,7 @@ def focus_next_in_group(group_code):
                 except Exception:
                     pass
             
-            app.after(0, lambda gn=group_display_names[group_code].get(), hwnd_count=len(hwnds): log(f"{lang_map['已完成置頂分組']} {gn} {lang_map['的所有']} {hwnd_count} {lang_map['個視窗']}"))
+            app.after(0, lambda gn=group_name, hwnd_count=len(hwnds): log(f"{lang_map['已完成置頂分組']} {gn} {lang_map['的所有']} {hwnd_count} {lang_map['個視窗']}"))
         except Exception as e:
             app.after(0, lambda msg=f"置頂處理異常: {e}": log(msg))
     
@@ -3415,6 +3745,18 @@ def open_entry_file(entry):
 group_count_combo.bind("<<ComboboxSelected>>", on_group_count_change)
 rebuild_topmost_buttons()  # 先初始化置頂切換按鈕
 rebuild_group_buttons()    # 再初始化啟動/關閉按鈕
+
+def sync_startup_schedules():
+    try:
+        sync_all_windows_schedules()
+    except Exception as error:
+        log(f"啟動同步 Windows 排程失敗：{error}")
+
+
+app.after(100, lambda: threading.Thread(target=sync_startup_schedules, daemon=True).start())
+
+# 若是由 Windows 工作排程器觸發，處理對應分組啟動
+apply_scheduled_group_from_args()
 
 # --- 排程背景執行器 ---
 last_triggered_minute = ""
