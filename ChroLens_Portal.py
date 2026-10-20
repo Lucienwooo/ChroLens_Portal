@@ -114,6 +114,9 @@ from win32com.shell import shell, shellcon
 import subprocess
 import sys
 import json
+import csv
+import queue
+import socket
 import keyboard
 from tkinter import font as tkfont
 import functools
@@ -128,8 +131,81 @@ except ImportError:
 import ctypes
 from lang import LANG_MAP, get_text
 
-SETTINGS_FILE = "chrolens_portal.json"
+APP_BASE_DIR = os.path.dirname(os.path.abspath(sys.executable if getattr(sys, "frozen", False) else __file__))
+SETTINGS_FILE = os.path.join(APP_BASE_DIR, "chrolens_portal.json")
+SCHEDULE_IPC_HOST = "127.0.0.1"
+SCHEDULE_IPC_PORT = 47631
+pending_schedule_groups = []
+schedule_ipc_lock = threading.Lock()
+schedule_ipc_ready = False
 settings_loading = False
+
+
+def get_schedule_group_argument():
+    for argument in sys.argv[1:]:
+        if argument.startswith("--schedule-group="):
+            return argument.split("=", 1)[1].upper()
+    return None
+
+
+def forward_schedule_group_to_running_instance(group_code):
+    try:
+        with socket.create_connection((SCHEDULE_IPC_HOST, SCHEDULE_IPC_PORT), timeout=1) as connection:
+            connection.sendall(f"CLP1:{group_code}\n".encode("ascii"))
+            connection.settimeout(1)
+            return connection.recv(16) == b"OK"
+    except OSError:
+        return False
+
+
+def run_schedule_ipc_server(server_socket):
+    while True:
+        try:
+            connection, _ = server_socket.accept()
+        except OSError:
+            return
+        with connection:
+            try:
+                connection.settimeout(1)
+                message = connection.recv(64).decode("ascii").strip()
+                prefix, separator, group_code = message.partition(":")
+                if prefix != "CLP1" or not separator or group_code not in "ABCDEFGHIJ":
+                    connection.sendall(b"ERR")
+                    continue
+                with schedule_ipc_lock:
+                    pending_schedule_groups.append(group_code)
+                connection.sendall(b"OK")
+                if schedule_ipc_ready:
+                    try:
+                        app.after(0, process_pending_scheduled_groups)
+                    except Exception:
+                        pass
+            except (OSError, UnicodeError):
+                pass
+
+
+def start_schedule_ipc_server():
+    requested_group = get_schedule_group_argument()
+    if requested_group and forward_schedule_group_to_running_instance(requested_group):
+        raise SystemExit(0)
+
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        server_socket.bind((SCHEDULE_IPC_HOST, SCHEDULE_IPC_PORT))
+        server_socket.listen(5)
+    except OSError:
+        server_socket.close()
+        return False
+
+    threading.Thread(
+        target=run_schedule_ipc_server,
+        args=(server_socket,),
+        daemon=True,
+    ).start()
+    return True
+
+
+SCHEDULE_IPC_PRIMARY = start_schedule_ipc_server()
 
 class ToolTip:
     """為 Tkinter 元件提供懸浮提示功能"""
@@ -481,12 +557,6 @@ app.title(f"ChroLens_Portal {CURRENT_VERSION}")
 ico_path = APP_ICON_PATH
 apply_app_icon(app)
 
-if not is_admin():
-    app.after(500, lambda: messagebox.showwarning(
-        "權限提醒",
-        "目前以標準使用者權限啟動，部分視窗管理與快捷鍵功能可能受限。\n若需要完整功能，請以管理員身份重新啟動。"
-    ))
-
 # 取得 DPI 縮放比例並計算自適應尺寸
 dpi_scale = get_dpi_scale()
 print(f"檢測到 DPI 縮放: {dpi_scale:.2f}x ({int(dpi_scale * 100)}%)")
@@ -641,14 +711,14 @@ choose_path_btn = tb.Button(folder_frame, text=lang_map["選擇開啟路徑"], c
 choose_path_btn.grid(row=0, column=0, padx=(adaptive_padding, 0))
 
 # 啟動間隔（調換到前面）
-interval_frame = tb.Frame(top_row_frame, padding=(adaptive_padding, adaptive_padding))
+interval_frame = tb.Frame(top_row_frame, borderwidth=1, relief="solid", padding=(1, 1))
 interval_frame.grid(row=0, column=1, sticky="w", padx=(0, 4))
 interval_label = tb.Label(interval_frame, text="啟動間隔(秒):")
 interval_label.grid(row=0, column=0, sticky="w")
 tb.Entry(interval_frame, textvariable=interval_var, width=3).grid(row=0, column=1, padx=(adaptive_padding, 0), sticky="w")
 
 # 分組數量選擇器（調換到後面）
-group_count_frame = tb.Frame(top_row_frame, padding=(adaptive_padding, adaptive_padding))
+group_count_frame = tb.Frame(top_row_frame, borderwidth=1, relief="solid", padding=(1, 1))
 group_count_frame.grid(row=0, column=2, sticky="w", padx=(0, 4))
 group_count_label = tb.Label(group_count_frame, text="分組數量:")
 group_count_label.grid(row=0, column=0, sticky="w")
@@ -1207,6 +1277,13 @@ show_label_frames = []
 second_row_frame = tb.Frame(frm)
 second_row_frame.grid(row=1, column=0, columnspan=8, sticky="nsew", padx=0, pady=0)
 show_label_font = tkfont.Font(family="Microsoft JhengHei", size=12)
+group_frame_style = tb.Style()
+group_frame_style.configure(
+    "PortalGroup.TFrame",
+    bordercolor="#454545",
+    lightcolor="#454545",
+    darkcolor="#454545",
+)
 # 置頂切換按鈕區域將平鈖整行寬度
 
 # 建立 mini 模式的還原按鈕（初始隱藏）
@@ -1264,8 +1341,8 @@ def rebuild_topmost_buttons():
             col_offset = (buttons_per_row - second_row_count) // 2
             actual_col = col_offset + (idx - buttons_per_row)
         
-        frame = tb.Frame(second_row_frame, borderwidth=max(1, int(2 / dpi_scale)), relief="groove", padding=2)
-        frame.grid(row=row, column=actual_col, padx=adaptive_padding, pady=adaptive_padding, sticky="ew")
+        frame = tb.Frame(second_row_frame, borderwidth=max(1, int(2 / dpi_scale)), relief="groove", padding=2, style="PortalGroup.TFrame")
+        frame.grid(row=row, column=actual_col, padx=adaptive_padding, pady=(0, 1), sticky="ew")
         
         # 讓 frame 內部平均分配空間
         frame.grid_columnconfigure(0, weight=1)
@@ -1301,8 +1378,6 @@ def rebuild_topmost_buttons():
             style="Dark.TEntry"
         )
         hotkey_entry.grid(row=0, column=1, sticky="e")
-        ToolTip(hotkey_entry, "設定Alt+任意英文數字按鍵來設定快捷鍵")
-        
         def make_on_key(idx):
             return lambda event, i=idx: on_hotkey_entry_key(event, i)
         hotkey_entry.bind("<Key>", make_on_key(idx))
@@ -1353,17 +1428,17 @@ def on_num_label_click(event, entry):
 # --- row 2：分組檔案列 ---
 group_frames = []
 for col in range(3):
-    group_frame = tb.Frame(frm, borderwidth=max(1, int(1 / dpi_scale)), relief="solid", padding=adaptive_padding)
-    group_frame.grid(row=2, column=col, padx=adaptive_padding, pady=adaptive_padding, sticky="nsew")
+    group_frame = tb.Frame(frm, borderwidth=max(1, int(1 / dpi_scale)), relief="solid", padding=adaptive_padding, style="PortalGroup.TFrame")
+    group_frame.grid(row=2, column=col, padx=adaptive_padding, pady=1, sticky="nsew")
     frm.grid_columnconfigure(col, weight=1, uniform="group_col")  # 使用 uniform 確保三欄等寬
     # 配置內部欄位 - 讓所有 entry 欄位等寬
-    group_frame.grid_columnconfigure(0, weight=0, minsize=30)  # 編號欄固定寬度
+    group_frame.grid_columnconfigure(0, weight=0, minsize=20)  # 編號欄固定寬度
     group_frame.grid_columnconfigure(1, weight=1, minsize=150)  # 檔案名稱欄可擴展，最小寬度 150
     for i in range(2, 6):  # combo 欄位固定寬度
-        group_frame.grid_columnconfigure(i, weight=0, minsize=35)
+        group_frame.grid_columnconfigure(i, weight=0, minsize=28)
     group_frames.append(group_frame)
 
-combo_width = 3  # 原本是4，縮短1/3
+combo_width = 2
 
 checkbox_vars_entries = []
 
@@ -1418,12 +1493,12 @@ for i in range(15):  # 15行
     num_label.grid(row=row, column=0, sticky="ew", padx=0)
     num_label.bind("<Button-1>", lambda e, ent=entry: on_num_label_click(e, ent))
     # Entry 欄位 - 使用 sticky="ew" 讓它自動填滿空間
-    entry.grid(row=row, column=1, padx=1, pady=adaptive_padding, sticky="ew")
+    entry.grid(row=row, column=1, padx=1, pady=(0, 1), sticky="ew")
     # Combo 欄位 - 固定寬度
-    group_combo1.grid(row=row, column=2, padx=0, pady=adaptive_padding, sticky="ew")
-    group_combo2.grid(row=row, column=3, padx=0, pady=adaptive_padding, sticky="ew")
-    group_combo3.grid(row=row, column=4, padx=0, pady=adaptive_padding, sticky="ew")
-    group_combo4.grid(row=row, column=5, padx=0, pady=adaptive_padding, sticky="ew")
+    group_combo1.grid(row=row, column=2, padx=0, pady=(0, 1), sticky="ew")
+    group_combo2.grid(row=row, column=3, padx=0, pady=(0, 1), sticky="ew")
+    group_combo3.grid(row=row, column=4, padx=0, pady=(0, 1), sticky="ew")
+    group_combo4.grid(row=row, column=5, padx=0, pady=(0, 1), sticky="ew")
     checkbox_vars_entries.append((entry, group_var1, group_var2, group_var3, group_var4, group_combo1, group_combo2, group_combo3, group_combo4))
     num_btn = tb.Button(
         group_frames[col],
@@ -1437,7 +1512,7 @@ for i in range(15):  # 15行
 
 # 先在初始化時建立 style
 style = tb.Style()
-style.configure("Num.TButton", font=("Microsoft JhengHei", scaled_font_size, "bold"))
+style.configure("Num.TButton", font=("Microsoft JhengHei", scaled_font_size, "bold"), padding=(1, 0))
 # 配置深色 Entry 樣式（用於快捷鍵文字框）
 style.configure("Dark.TEntry", 
                 fieldbackground="#2b3e50",  # 深色背景（與 darkly 主題一致）
@@ -1498,7 +1573,7 @@ def rebuild_group_buttons():
             command=lambda c=code: start_group_opening(c),
             compound="center"  # 確保文字不影響寬度
         )
-        start_btn.grid(row=row, column=col, padx=adaptive_padding, pady=adaptive_padding, sticky="nsew")
+        start_btn.grid(row=row, column=col, padx=adaptive_padding, pady=(0, 1), sticky="nsew")
         start_btn.bind("<Button-3>", lambda e, c=code: show_button_mini_menu(e, "start", c))
         
         # 載入自定義圖示
@@ -1520,7 +1595,7 @@ def rebuild_group_buttons():
             command=lambda c=code: close_group_windows(c),
             compound="center"  # 確保文字不影響寬度
         )
-        close_btn.grid(row=row, column=col, padx=adaptive_padding, pady=adaptive_padding, sticky="nsew")
+        close_btn.grid(row=row, column=col, padx=adaptive_padding, pady=(0, 1), sticky="nsew")
         close_btn.bind("<Button-3>", lambda e, c=code: show_button_mini_menu(e, "close", c))
         
         # 載入自定義圖示
@@ -1619,7 +1694,7 @@ file_list_outer.grid(row=0, column=0, sticky="nsew")
 file_list_outer.grid_propagate(True)
 file_list_outer.grid_rowconfigure(0, weight=1)
 file_list_outer.grid_columnconfigure(0, weight=1)
-file_list_canvas = tk.Canvas(file_list_outer, highlightthickness=0)
+file_list_canvas = tk.Canvas(file_list_outer, background=app.style.colors.bg, highlightthickness=0)
 file_list_canvas.grid(row=0, column=0, sticky="nsew")
 file_list_inner_frame = tb.Frame(file_list_canvas)
 file_list_inner_frame_id = file_list_canvas.create_window((0, 0), window=file_list_inner_frame, anchor="nw")
@@ -1873,7 +1948,7 @@ def set_group_windows_topmost(group_code):
 def start_group_opening(group_code):
     folder = folder_var.get()
     try:
-        interval = float(interval_var.get())
+        interval = max(0.0, float(interval_var.get()))
     except ValueError:
         log(lang_map["請輸入正確的間隔秒數"])
         return
@@ -1886,81 +1961,106 @@ def start_group_opening(group_code):
         return
     log(f"{lang_map['開始開啟分組']} {group_display_names[group_code].get()} {lang_map['的檔案於']} {folder}")
     
-    def wait_for_window_and_restore(file_key, max_wait=10):
-        """等待視窗出現並恢復佈局"""
-        start_time = time.time()
+    def watch_opened_windows(pending_queue, launch_finished):
+        pending_windows = []
         my_hwnd = app.winfo_id()
-        
-        while time.time() - start_time < max_wait:
-            found = False
-            def enum_handler(hwnd, _):
-                nonlocal found
-                if not win32gui.IsWindowVisible(hwnd):
-                    return
-                if hwnd == my_hwnd:
-                    return
-                
-                window_text = win32gui.GetWindowText(hwnd)
-                if file_key.lower() in window_text.lower():
-                    # 找到視窗，嘗試恢復佈局
-                    if restore_window_layout(group_code, hwnd, window_text):
-                        found = True
-                        return
-                    else:
-                        # 如果沒有保存的佈局，至少置頂視窗
-                        try:
-                            win32gui.SetWindowPos(
-                                hwnd, win32con.HWND_TOP, 0, 0, 0, 0,
-                                win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_SHOWWINDOW
-                            )
-                        except:
-                            pass
-                        found = True
-            
-            win32gui.EnumWindows(enum_handler, None)
-            if found:
-                break
-            time.sleep(0.3)
-    
-    def open_files():
-        for file in files:
-            file_path = os.path.join(folder, file)
-            if not os.path.exists(file_path):
-                log(f"{lang_map['找不到檔案: ']}{file_path}")
-                continue
-            
-            file_key = os.path.splitext(os.path.basename(file))[0]
-            
+        while True:
             try:
-                if file_path.lower().endswith('.lnk'):
-                    # 解析捷徑
-                    target, args = open_lnk_target(file_path)
-                    if target and os.path.exists(target):
-                        log(f"{lang_map['開啟捷徑目標: ']}{target} {args}")
-                        if args:
-                            subprocess.Popen(f'"{target}" {args}', shell=True)
+                while True:
+                    pending_windows.append(pending_queue.get_nowait())
+            except queue.Empty:
+                pass
+
+            now = time.monotonic()
+            pending_windows = [
+                item for item in pending_windows
+                if now - item["started_at"] < 10
+            ]
+            if pending_windows:
+                completed = []
+
+                def enum_handler(hwnd, _):
+                    if not win32gui.IsWindowVisible(hwnd) or hwnd == my_hwnd:
+                        return
+                    window_text = win32gui.GetWindowText(hwnd)
+                    window_text_lower = window_text.lower()
+                    for item in pending_windows:
+                        if item["file_key"] not in window_text_lower:
+                            continue
+                        if restore_window_layout(group_code, hwnd, window_text):
+                            completed.append(item)
                         else:
-                            subprocess.Popen(f'"{target}"', shell=True)
+                            try:
+                                win32gui.SetWindowPos(
+                                    hwnd, win32con.HWND_TOP, 0, 0, 0, 0,
+                                    win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_SHOWWINDOW
+                                )
+                            except Exception:
+                                pass
+                            completed.append(item)
+
+                win32gui.EnumWindows(enum_handler, None)
+                if completed:
+                    completed_ids = {item["id"] for item in completed}
+                    pending_windows = [
+                        item for item in pending_windows
+                        if item["id"] not in completed_ids
+                    ]
+
+            if not pending_windows and launch_finished.is_set() and pending_queue.empty():
+                return
+            time.sleep(0.2 if pending_windows else 0.05)
+    
+    pending_queue = queue.Queue()
+    launch_finished = threading.Event()
+    threading.Thread(
+        target=watch_opened_windows,
+        args=(pending_queue, launch_finished),
+        daemon=True,
+    ).start()
+
+    def open_files():
+        try:
+            for index, file in enumerate(files):
+                file_path = os.path.join(folder, file)
+                if not os.path.exists(file_path):
+                    log(f"{lang_map['找不到檔案: ']}{file_path}")
+                    continue
+
+                file_key = os.path.splitext(os.path.basename(file))[0].lower()
+                opened = False
+                try:
+                    if file_path.lower().endswith('.lnk'):
+                        target, args = open_lnk_target(file_path)
+                        if target and os.path.exists(target):
+                            log(f"{lang_map['開啟捷徑目標: ']}{target} {args}")
+                            if args:
+                                subprocess.Popen(f'"{target}" {args}', shell=True)
+                            else:
+                                subprocess.Popen(f'"{target}"', shell=True)
+                        else:
+                            log(f"直接開啟捷徑: {file_path}")
+                            os.startfile(file_path)
+                    elif file_path.lower().endswith('.exe'):
+                        log(f"{lang_map['執行程式: ']}{file_path}")
+                        subprocess.Popen(f'"{file_path}"', shell=True)
                     else:
-                        # 如果解析失敗，直接用 Windows 開啟捷徑
-                        log(f"{lang_map['直接開啟捷徑: ']}{file_path}")
+                        log(f"{lang_map['開啟檔案: ']}{file_path}")
                         os.startfile(file_path)
-                elif file_path.lower().endswith('.exe'):
-                    # 直接執行 .exe 檔案
-                    log(f"{lang_map['執行程式: ']}{file_path}")
-                    subprocess.Popen(f'"{file_path}"', shell=True)
-                else:
-                    # 其他檔案類型用系統預設程式開啟
-                    log(f"{lang_map['開啟檔案: ']}{file_path}")
-                    os.startfile(file_path)
-                
-                # 等待視窗出現並恢復佈局
-                wait_for_window_and_restore(file_key)
-                
-            except Exception as e:
-                log(f"{lang_map['無法開啟: ']}{file_path}{lang_map['，錯誤：']}{e}")
-            
-            time.sleep(interval)
+                    opened = True
+                except Exception as e:
+                    log(f"{lang_map['無法開啟: ']}{file_path}{lang_map['，錯誤：']}{e}")
+
+                if opened and file_key:
+                    pending_queue.put({
+                        "id": object(),
+                        "file_key": file_key,
+                        "started_at": time.monotonic(),
+                    })
+                if index < len(files) - 1 and interval > 0:
+                    time.sleep(interval)
+        finally:
+            launch_finished.set()
     
     threading.Thread(target=open_files, daemon=True).start()
 
@@ -2522,11 +2622,10 @@ def build_schedule_task_name(task):
 
 def build_schedule_task_command(task):
     """建立排程觸發時執行的命令列。"""
-    if getattr(sys, 'frozen', False):
-        script_path = os.path.abspath(sys.executable)
-    else:
-        script_path = os.path.abspath(sys.argv[0]) if sys.argv and sys.argv[0] else os.path.abspath(__file__)
     group_code = str(task.get("group", "A")).upper()
+    if getattr(sys, 'frozen', False):
+        return f'"{os.path.abspath(sys.executable)}" --schedule-group={group_code}'
+    script_path = os.path.abspath(sys.argv[0]) if sys.argv and sys.argv[0] else os.path.abspath(__file__)
     return f'"{sys.executable}" "{script_path}" --schedule-group={group_code}'
 
 
@@ -2574,39 +2673,116 @@ def sync_all_windows_schedules():
         sync_windows_schedule(task)
 
 
+def query_windows_schedule_tasks():
+    """讀取本程式命名的啟用中 Windows 排程，補回程式清單。"""
+    try:
+        result = subprocess.run(
+            ["schtasks.exe", "/Query", "/FO", "CSV", "/NH"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=15,
+        )
+    except Exception as error:
+        log(f"讀取 Windows 排程失敗：{error}")
+        return []
+
+    if result.returncode != 0:
+        return []
+
+    known_tasks = {
+        (str(task.get("group", "")).upper(), str(task.get("time", "")))
+        for task in schedule_tasks
+    }
+    imported_tasks = []
+    for row in csv.reader(result.stdout.splitlines()):
+        if not row:
+            continue
+        task_name = row[0].strip().lstrip("\ufeff").rsplit("\\", 1)[-1]
+        prefix = "ChroLens_Portal_"
+        if not task_name.startswith(prefix):
+            continue
+        parts = task_name[len(prefix):].split("_")
+        if len(parts) != 3:
+            continue
+        group_code, hour, minute = parts
+        if group_code not in all_group_codes or not (hour.isdigit() and minute.isdigit()):
+            continue
+        if int(hour) > 23 or int(minute) > 59:
+            continue
+        schedule_time = f"{hour}:{minute}"
+        task_key = (group_code, schedule_time)
+        if task_key in known_tasks:
+            continue
+        status = row[2].strip().casefold() if len(row) > 2 else ""
+        if status in {"disabled", "停用", "已停用"}:
+            continue
+        imported_tasks.append({"group": group_code, "time": schedule_time, "enabled": True})
+        known_tasks.add(task_key)
+    return imported_tasks
+
+
+def apply_imported_schedule_tasks(imported_tasks):
+    added_tasks = []
+    for task in imported_tasks:
+        task_key = (task["group"], task["time"])
+        if any((item.get("group"), item.get("time")) == task_key for item in schedule_tasks):
+            continue
+        schedule_tasks.append(task)
+        added_tasks.append(task)
+
+    if not added_tasks:
+        return
+    for task in added_tasks:
+        sync_windows_schedule(task)
+    save_settings()
+    for refresh_schedule_list in tuple(schedule_list_refreshers):
+        try:
+            refresh_schedule_list()
+        except tk.TclError:
+            schedule_list_refreshers.remove(refresh_schedule_list)
+    log(f"已從 Windows 工作排程器匯入 {len(added_tasks)} 個排程")
+
+
+def dispatch_scheduled_group(group_code):
+    if group_code not in group_codes:
+        return False
+    app.after(1500, lambda gc=group_code: start_group_opening(gc))
+    log(f"Windows 排程已觸發分組：{group_display_names[group_code].get()}")
+    return True
+
+
+def process_pending_scheduled_groups():
+    with schedule_ipc_lock:
+        group_codes_to_dispatch = list(pending_schedule_groups)
+        pending_schedule_groups.clear()
+    for group_code in group_codes_to_dispatch:
+        dispatch_scheduled_group(group_code)
+
+
 def apply_scheduled_group_from_args():
     """處理由 Windows 排程觸發的 group 啟動。"""
-    for arg in sys.argv[1:]:
-        if arg.startswith("--schedule-group="):
-            group_code = arg.split("=", 1)[1].upper()
-            if group_code in group_codes:
-                app.after(1500, lambda gc=group_code: start_group_opening(gc))
-                log(f"Windows 排程已觸發分組：{group_display_names[group_code].get()}")
-                return True
-    return False
+    group_code = get_schedule_group_argument()
+    return dispatch_scheduled_group(group_code) if group_code else False
 
 # --- 排程功能 ---
 def show_schedule_dialog():
     """顯示排程設定視窗"""
+    try:
+        apply_imported_schedule_tasks(query_windows_schedule_tasks())
+    except Exception as error:
+        log(f"重新載入 Windows 排程失敗：{error}")
+
     schedule_win = tb.Toplevel(app)
     apply_app_icon(schedule_win)
     schedule_win.title(lang_map["ChroLens_Portal 排程設定"])
     
     # 根據 DPI 調整對話框大小
-    dialog_width = int(600 / dpi_scale)
-    dialog_height = int(400 / dpi_scale)
-    dialog_width = max(500, dialog_width)  # 最小寬度
+    dialog_width = max(720, int(900 / dpi_scale))
+    dialog_height = max(350, int(450 / dpi_scale))
     dialog_height = max(350, dialog_height)  # 最小高度
-    
-    schedule_win.geometry(f"{dialog_width}x{dialog_height}")
     schedule_win.resizable(True, True)
-    schedule_win.minsize(500, 350)  # 設定最小尺寸
-    
-    # 置中顯示
-    app.update_idletasks()
-    x = app.winfo_x() + (app.winfo_width() // 2) - (dialog_width // 2)
-    y = app.winfo_y() + 50
-    schedule_win.geometry(f"{dialog_width}x{dialog_height}+{x}+{y}")
+    schedule_win.minsize(720, 350)
     
     # 設定 icon
     try:
@@ -2615,7 +2791,7 @@ def show_schedule_dialog():
         pass
     
     # 主框架（根據 DPI 調整 padding）
-    dialog_padding = max(5, int(10 / dpi_scale))
+    dialog_padding = 1
     main_frame = tb.Frame(schedule_win, padding=dialog_padding)
     main_frame.pack(fill="both", expand=True)
     
@@ -2625,7 +2801,7 @@ def show_schedule_dialog():
     
     # 上方控制區
     control_frame = tb.Frame(main_frame)
-    control_frame.grid(row=0, column=0, sticky="ew", pady=(0, dialog_padding))
+    control_frame.grid(row=0, column=0, sticky="ew", pady=(0, 1))
     
     # 分組選擇
     group_var = tk.StringVar(value=group_display_names[group_codes[0]].get())
@@ -2636,7 +2812,7 @@ def show_schedule_dialog():
         width=15,
         state="readonly"
     )
-    group_combo.grid(row=0, column=2, padx=(0, 10), sticky="w")
+    group_combo.grid(row=0, column=2, padx=(0, 1), sticky="w")
     
     # 當分組名稱變動時，動態更新 schedule dialog 裡面的 dropdown values
     def update_dialog_combo(*args):
@@ -2665,18 +2841,18 @@ def show_schedule_dialog():
     schedule_win.protocol("WM_DELETE_WINDOW", on_close_dialog)
     
     # 時間設定
-    tb.Label(control_frame, text=lang_map["時間 (HH:MM):"]).grid(row=0, column=3, padx=(10, 5), sticky="w")
+    tb.Label(control_frame, text=lang_map["時間 (HH:MM):"]).grid(row=0, column=3, padx=1, sticky="w")
     hour_var = tk.StringVar(value="00")
     minute_var = tk.StringVar(value="00")
     
     time_frame = tb.Frame(control_frame)
-    time_frame.grid(row=0, column=4, padx=(0, 10), sticky="w")
+    time_frame.grid(row=0, column=4, padx=(0, 1), sticky="w")
     
     # 改為下拉式選單 (24小時制)
     hour_combo = tb.Combobox(time_frame, textvariable=hour_var, width=3, state="readonly",
                              values=[f"{h:02d}" for h in range(24)])
     hour_combo.pack(side="left")
-    tb.Label(time_frame, text=":").pack(side="left", padx=2)
+    tb.Label(time_frame, text=":").pack(side="left", padx=1)
     minute_combo = tb.Combobox(time_frame, textvariable=minute_var, width=3, state="readonly",
                                values=[f"{m:02d}" for m in range(60)])
     minute_combo.pack(side="left")
@@ -2709,8 +2885,20 @@ def show_schedule_dialog():
         save_settings()  # 儲存排程到設定檔
         log(f"{lang_map['已新增排程：']}{group_display_names[group_code].get()} {lang_map['於']} {time_str}")
     
-    add_btn = tb.Button(control_frame, text="新增", command=add_schedule, bootstyle="success", width=8)
-    add_btn.grid(row=0, column=5, padx=(10, 0), sticky="w")
+    add_btn = tb.Button(control_frame, text="新增", command=add_schedule, bootstyle="success", width=8, padding=(1, 0))
+    add_btn.grid(row=0, column=5, padx=(1, 0), sticky="w")
+
+    control_frame.update_idletasks()
+    required_width = control_frame.winfo_reqwidth() + dialog_padding * 2 + 16
+    dialog_width = min(
+        max(dialog_width, required_width),
+        max(720, schedule_win.winfo_screenwidth() - 40),
+    )
+    schedule_win.minsize(dialog_width, 350)
+    app.update_idletasks()
+    x = app.winfo_x() + (app.winfo_width() // 2) - (dialog_width // 2)
+    y = app.winfo_y() + 50
+    schedule_win.geometry(f"{dialog_width}x{dialog_height}+{x}+{y}")
     
     # 排程列表區域
     list_frame = tb.Frame(main_frame, borderwidth=max(1, int(1 / dpi_scale)), relief="solid")
@@ -2745,8 +2933,8 @@ def show_schedule_dialog():
             return
         
         for idx, task in enumerate(schedule_tasks):
-            task_frame = tb.Frame(inner_frame, borderwidth=1, relief="groove", padding=5)
-            task_frame.pack(fill="x", padx=5, pady=2)
+            task_frame = tb.Frame(inner_frame, borderwidth=1, relief="groove", padding=1)
+            task_frame.pack(fill="x", padx=1, pady=1)
             
             # 啟用/停用開關（只保留綠色的）
             enabled_var = tk.BooleanVar(value=task["enabled"])
@@ -2762,9 +2950,10 @@ def show_schedule_dialog():
                 text="",
                 variable=enabled_var,
                 command=toggle_task,
-                bootstyle="success-round-toggle"
+                bootstyle="success-round-toggle",
+                padding=(1, 0)
             )
-            check.pack(side="left", padx=(0, 10))
+            check.pack(side="left", padx=(0, 1))
             
             # 時間顯示
             time_label = tb.Label(
@@ -2773,7 +2962,7 @@ def show_schedule_dialog():
                 font=("Consolas", 12, "bold"),
                 width=8
             )
-            time_label.pack(side="left", padx=(0, 10))
+            time_label.pack(side="left", padx=(0, 1))
             
             # 分組顯示（只顯示使用者設定的名稱）
             group_display = group_display_names[task['group']].get()
@@ -2782,7 +2971,7 @@ def show_schedule_dialog():
                 text=group_display,
                 font=("Microsoft JhengHei", 10)
             )
-            group_label.pack(side="left", padx=(0, 10))
+            group_label.pack(side="left", padx=(0, 1))
             
             # 刪除按鈕
             def delete_task(index=idx):
@@ -2797,9 +2986,10 @@ def show_schedule_dialog():
                 text="刪除",
                 command=delete_task,
                 bootstyle="danger-outline",
-                width=6
+                width=6,
+                padding=(1, 0)
             )
-            delete_btn.pack(side="right", padx=(5, 0))
+            delete_btn.pack(side="right", padx=(1, 0))
         
         inner_frame.update_idletasks()
         canvas.configure(scrollregion=canvas.bbox("all"))
@@ -2823,9 +3013,10 @@ def show_schedule_dialog():
         text="檢視工作排程",
         command=open_task_scheduler,
         bootstyle="info",
-        width=15
+        width=15,
+        padding=(1, 0)
     )
-    task_scheduler_btn.pack(side="left", padx=(0, 10))
+    task_scheduler_btn.pack(side="left", padx=(0, 1))
     
     # 關閉按鈕
     close_btn = tb.Button(
@@ -2833,7 +3024,8 @@ def show_schedule_dialog():
         text="關閉",
         command=on_close_dialog,
         bootstyle="secondary",
-        width=8
+        width=8,
+        padding=(1, 0)
     )
     close_btn.pack(side="right")
     
@@ -3418,8 +3610,6 @@ def get_group_files(group_code):
 
 # --- 分組循環聚焦功能 ---
 group_focus_indexes = {code: 0 for code in group_codes}
-group_hwnd_lists = {code: [] for code in group_codes}
-
 def update_group_hwnd_list(group_code, files=None):
     if files is None:
         files = get_group_files(group_code)
@@ -3428,11 +3618,12 @@ def update_group_hwnd_list(group_code, files=None):
     def enum_handler(hwnd, _):
         if not win32gui.IsWindowVisible(hwnd):
             return
-        window_text = win32gui.GetWindowText(hwnd).lower().strip()
-        if any(title and title in window_text for title in target_titles):
-            hwnds.append(hwnd)
+        window_text = win32gui.GetWindowText(hwnd)
+        window_text_lower = window_text.lower().strip()
+        if any(title and title in window_text_lower for title in target_titles):
+            hwnds.append((hwnd, window_text))
     win32gui.EnumWindows(enum_handler, None)
-    group_hwnd_lists[group_code] = hwnds
+    return hwnds
 
 def focus_next_in_group(group_code):
     """批次同時置頂分組中的所有視窗並恢復佈局（整合 FancyZones 功能）"""
@@ -3443,22 +3634,16 @@ def focus_next_in_group(group_code):
     def topmost_and_restore_windows():
         """在背景執行緒中批次置頂視窗並恢復佈局"""
         try:
-            update_group_hwnd_list(group_code, group_files)
-            hwnds = group_hwnd_lists[group_code]
-            if not hwnds:
+            window_records = update_group_hwnd_list(group_code, group_files)
+            if not window_records:
                 log(f"{lang_map['[快捷鍵] 分組']} {group_name} {lang_map['沒有視窗']}")
                 return
+            hwnds = [hwnd for hwnd, _ in window_records]
 
             log(f"{lang_map['[快捷鍵] 開始置頂並恢復分組']} {group_name} {lang_map['的']} {len(hwnds)} {lang_map['個視窗佈局']}")
 
             # 獲取所有視窗的標題（用於匹配佈局）
-            hwnd_titles = {}
-            for hwnd in hwnds:
-                try:
-                    title = win32gui.GetWindowText(hwnd)
-                    hwnd_titles[hwnd] = title
-                except Exception:
-                    hwnd_titles[hwnd] = ""
+            hwnd_titles = dict(window_records)
             
             # 第一步：還原所有最小化的視窗
             for hwnd in hwnds:
@@ -3748,12 +3933,18 @@ rebuild_group_buttons()    # 再初始化啟動/關閉按鈕
 
 def sync_startup_schedules():
     try:
+        imported_tasks = query_windows_schedule_tasks()
+        if imported_tasks:
+            app.after(0, lambda tasks=imported_tasks: apply_imported_schedule_tasks(tasks))
         sync_all_windows_schedules()
     except Exception as error:
         log(f"啟動同步 Windows 排程失敗：{error}")
 
 
 app.after(100, lambda: threading.Thread(target=sync_startup_schedules, daemon=True).start())
+
+schedule_ipc_ready = True
+app.after(0, process_pending_scheduled_groups)
 
 # 若是由 Windows 工作排程器觸發，處理對應分組啟動
 apply_scheduled_group_from_args()
